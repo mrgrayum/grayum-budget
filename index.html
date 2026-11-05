@@ -307,6 +307,19 @@ function fmtPlain(c) { // no $ sign, for inputs
   const neg = c < 0, a = Math.abs(c);
   return (neg ? "-" : "") + Math.floor(a / 100).toLocaleString("en-US") + "." + String(a % 100).padStart(2, "0");
 }
+function fmtSigned(c) { // Difference displays only: +$53.00 / −$53.00 / $0.00 — sign is the meaning
+  if (c === 0) return fmt(0);
+  const a = Math.abs(c);
+  return (c > 0 ? "+$" : "−$") + Math.floor(a / 100).toLocaleString("en-US") + "." + String(a % 100).padStart(2, "0");
+}
+function diffCls(d) { // Difference = accounts − budget: positive is unassigned money (fine), negative is the alarm
+  return d < 0 ? "neg" : "pos";
+}
+function diffBanner(d) { // one-line verdict under the Difference row in the Total Available Dollars panel
+  if (d === 0) return `<div class="small pos" style="margin-top:4px;">✓ Budgeted to the dollar — your accounts and budget agree.</div>`;
+  if (d > 0) return `<div class="small pos" style="margin-top:4px;">${fmtSigned(d)} in your accounts isn't assigned to a budget item yet.</div>`;
+  return `<div class="small neg" style="margin-top:4px;">Your budget assigns ${fmt(-d)} more than your accounts hold.</div>`;
+}
 function todayStr() {
   const d = new Date();
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
@@ -658,12 +671,12 @@ function tadPanel(flows) {
   // roll-forward counts income that hasn't arrived yet, which used to show
   // a bogus negative Difference (e.g. −$5,846.35 while browsing December).
   const bc = balanceCheck(activeMonth(), flows);
-  const diffCls = bc.difference === 0 ? "pos" : "neg";
   return `<div class="card tad">
     <h3>Total Available Dollars</h3>
     <div class="kv"><span class="k">In your accounts</span><span class="v">${fmt(bc.accountsTotal)}</span></div>
     <div class="kv"><span class="k">Budget (actual)</span><span class="v">${fmt(bc.budgetLayer)}</span></div>
-    <div class="kv"><span class="k">Difference</span><span class="v ${diffCls}">${fmt(bc.difference)}</span></div>
+    <div class="kv"><span class="k">Difference</span><span class="v ${diffCls(bc.difference)}">${fmtSigned(bc.difference)}</span></div>
+    ${diffBanner(bc.difference)}
     <div class="kv"><span class="k muted">Expected, not yet received (not counted above)</span>
       <span class="v muted">${fmt(bc.expectedNotYetReceived)}</span></div>
   </div>`;
@@ -927,7 +940,7 @@ function accountsView(flows) {
     <div class="kv"><span class="k">− Spent</span><span class="v">${fmt(bc.spent)}</span></div>
     <div class="kv"><span class="k">Budget (actual)</span><span class="v">${fmt(bc.budgetLayer)}</span></div>
     <div class="kv"><span class="k">Accounts total</span><span class="v">${fmt(bc.accountsTotal)}</span></div>
-    <div class="kv"><span class="k">Difference</span><span class="v ${bc.difference === 0 ? "pos" : "neg"}">${fmt(bc.difference)}</span></div>
+    <div class="kv"><span class="k">Difference</span><span class="v ${diffCls(bc.difference)}">${fmtSigned(bc.difference)}</span></div>
     <div class="kv"><span class="k muted">Expected, not yet received (not counted)</span><span class="v muted">${fmt(bc.expectedNotYetReceived)}</span></div>
   </div>`;
   h += balancerPanel(flows);
@@ -938,7 +951,8 @@ function tadPanelFor(month, flows) {
   return `<div class="card tad"><h3>Total Available Dollars</h3>
     <div class="kv"><span class="k">In your accounts</span><span class="v">${fmt(bc.accountsTotal)}</span></div>
     <div class="kv"><span class="k">Budget (actual)</span><span class="v">${fmt(bc.budgetLayer)}</span></div>
-    <div class="kv"><span class="k">Difference</span><span class="v ${bc.difference === 0 ? "pos" : "neg"}">${fmt(bc.difference)}</span></div>
+    <div class="kv"><span class="k">Difference</span><span class="v ${diffCls(bc.difference)}">${fmtSigned(bc.difference)}</span></div>
+    ${diffBanner(bc.difference)}
   </div>`;
 }
 
@@ -1823,7 +1837,7 @@ function openMonthClose(flows) {
     <span><b>${esc(label)}</b><br><span class="small muted">${esc(detail)}</span></span></div>`;
   openModal(`<h2>Close ${monthLabel(m)}</h2>
     ${row(bc.difference === 0, "Books balance", bc.difference === 0
-      ? "Accounts and budget agree to the penny." : `Difference is ${fmt(bc.difference)} — closing anyway will snapshot it as-is.`)}
+      ? "Accounts and budget agree to the penny." : `Difference is ${fmtSigned(bc.difference)} — closing anyway will snapshot it as-is.`)}
     ${row(pendingRows === 0, "Statement rows reviewed", pendingRows === 0 ? "Nothing left pending for this month." : pendingRows + " row(s) still pending in Review.")}
     ${row(uncleared === 0, "Transactions cleared", uncleared === 0 ? "Everything in this month is cleared." : uncleared + " transaction(s) still uncleared (e.g. pending charges).")}
     <p class="small muted">Closing saves a full backup snapshot of the entire budget, then locks this month's planned amounts. You can reopen it later if needed.</p>
