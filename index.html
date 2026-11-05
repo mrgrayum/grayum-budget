@@ -237,7 +237,6 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 <script>
 "use strict";
 /* =====================================================================
@@ -372,12 +371,11 @@ function attachMoneyInput(input, initialCents) {
 
 /* ---------------- firebase setup ---------------- */
 const CONFIG_PLACEHOLDER = !window.FIREBASE_CONFIG || window.FIREBASE_CONFIG.apiKey === "YOUR_API_KEY";
-let auth = null, db = null, storage = null;
+let auth = null, db = null;
 if (!CONFIG_PLACEHOLDER && window.firebase) {
   firebase.initializeApp(window.FIREBASE_CONFIG);
   auth = firebase.auth();
   db = firebase.firestore();
-  try { storage = firebase.storage(); } catch (e) { storage = null; }
 }
 const ALLOWLIST = (window.ALLOWLIST_EMAILS || []).map(e => e.toLowerCase());
 function isAllowed(email) { return !!email && ALLOWLIST.includes(String(email).toLowerCase()); }
@@ -713,7 +711,7 @@ function activityView() {
       <button class="clr ${t.cleared ? "on" : ""}" data-act="togglecleared" data-txn="${t.id}" title="Cleared">${t.cleared ? "✓" : ""}</button>
       <div class="main">
         <div class="merch">${esc(t.merchant)}</div>
-        <div class="meta">${t.date} · ${esc(a ? a.name : "?")} · ${esc(txnItemLabel(t))}${t.note ? " · " + esc(t.note) : ""}${t.receiptBlobKey ? " · 📎 receipt" : ""}</div>
+        <div class="meta">${t.date} · ${esc(a ? a.name : "?")} · ${esc(txnItemLabel(t))}${t.note ? " · " + esc(t.note) : ""}</div>
       </div>
       <div class="amt ${t.amountCents < 0 ? "neg" : "pos"}">${fmt(t.amountCents)}</div>
     </div>`;
@@ -982,9 +980,6 @@ function openTxnForm(opts) {
       <button class="btn small secondary" id="tf-addsplit" type="button">+ Split across items</button></div>
     ${fieldHtml("Note", `<input type="text" id="tf-note" value="${esc(t ? (t.note || "") : "")}">`)}
     <div class="field"><label><input type="checkbox" id="tf-cleared" ${t && t.cleared ? "checked" : ""} style="width:auto;"> Cleared</label></div>
-    <div class="field"><label>Receipt photo</label>
-      <input type="file" id="tf-receipt" accept="image/*">
-      <div class="hint">${t && t.receiptBlobKey ? "A receipt is attached — uploading a new one replaces it." : "Optional. Stored privately; only the two invited accounts can open it."}</div></div>
     ${t ? `<button class="btn danger" id="tf-delete" type="button">Delete transaction</button>` : ""}
     ${modalActions(t ? "Save changes" : "Add transaction")}`);
   bindModalClose();
@@ -1115,12 +1110,6 @@ async function saveTxnForm() {
   rows.forEach((r, i) => ops.push({ type: "set", coll: "splits", id: splitIds[i],
     data: { id: splitIds[i], transactionId: txnId, monthLineId: r.lineId, amountCents: sign * r.cents } }));
   await batchWrite(ops);
-  // receipt photo (Firebase Storage; fails gracefully if not enabled)
-  const file = $("#tf-receipt").files && $("#tf-receipt").files[0];
-  if (file) {
-    const ok = await uploadReceipt(txnId, file);
-    if (!ok) toast("Saved — but the receipt photo didn't upload (storage may not be enabled yet).");
-  }
   if (st.statementRowId) {
     const row = S.statementRows.find(r => r.id === st.statementRowId);
     if (row) await setDoc("statementRows", row.id, { ...row, status: "confirmed", transactionId: txnId });
@@ -1128,16 +1117,6 @@ async function saveTxnForm() {
   closeModal();
   toast("Transaction saved");
 }
-async function uploadReceipt(txnId, file) {
-  if (!storage) return false;
-  try {
-    const path = `receipts/${txnId}/${file.name}`;
-    await storage.ref(path).put(file);
-    await setDoc("transactions", txnId, { ...S.transactions.find(t => t.id === txnId), receiptBlobKey: path });
-    return true;
-  } catch (e) { console.warn("receipt upload failed", e); return false; }
-}
-
 /* ---------------- move money ---------------- */
 function openMoveForm(fromLineId) {
   const month = UI.month;
