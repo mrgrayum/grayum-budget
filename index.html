@@ -292,6 +292,8 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
+const APP_VERSION = "2026-11-05 · hard-refresh";
+
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
 const $$ = (sel, el) => Array.from((el || document).querySelectorAll(sel));
@@ -979,6 +981,11 @@ function moreView() {
     <button class="btn secondary small" data-act="exportbudget">Budget CSV (viewed month)</button></div>
     <div class="addrow"><button class="btn secondary small" data-act="print">Print budget</button></div>
   </div>
+  <div class="card"><h3>App</h3>
+    <div class="addrow"><button class="btn secondary small" data-act="hardrefresh">Hard refresh</button></div>
+    <p class="small muted">Reload the app fresh, bypassing the saved copy on this device — use this after an update.</p>
+    <p class="small muted">Version ${APP_VERSION}</p>
+  </div>
   <div class="card"><h3>Account</h3>
     <p class="small muted">Signed in as ${esc(S.user ? S.user.email : "")}. Access is limited to the two invited accounts.</p>
     <button class="btn secondary" data-act="signout">Sign out</button>
@@ -1550,6 +1557,21 @@ function bindView(flows) {
   bindBackupImport();
 }
 
+/* Hard refresh: best-effort clear of Cache Storage, then reload with a
+   cache-busting query param so iOS fetches fresh HTML/JS. App data lives in
+   Firestore and the sign-in lives in Firebase Auth — neither is touched. */
+async function hardRefresh() {
+  try {
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+  } catch (err) { /* cache clearing is best-effort; the reload is the point */ }
+  const url = new URL(window.location.href);
+  url.searchParams.set("v", String(Date.now())); // set() replaces any existing v param
+  window.location.replace(url.toString());
+}
+
 async function handleAct(el, e) {
   const act = el.dataset.act;
   const flows = flowByLine();
@@ -1651,6 +1673,7 @@ async function handleAct(el, e) {
     case "exporttxns": exportTransactionsCSV(); break;
     case "exportbudget": exportBudgetCSV(flows); break;
     case "print": window.print(); break;
+    case "hardrefresh": await hardRefresh(); break;
     case "signout": if (auth) await auth.signOut(); break;
   }
 }
