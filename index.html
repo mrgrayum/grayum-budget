@@ -552,7 +552,7 @@ function balancer(flows) {
 function render() {
   if (!S.user) return;
   if (!S.loaded) { $("#main").innerHTML = '<div class="empty">Loading your budget…</div>'; return; }
-  if (!Object.keys(S.months).length) { renderEmptyDatabase(); return; }
+  if (!Object.keys(S.months).length && UI.tab !== "more") { renderEmptyDatabase(); return; }
   const flows = flowByLine();
   renderHeader(flows);
   const main = $("#main");
@@ -568,7 +568,12 @@ function renderEmptyDatabase() {
   $("#main").innerHTML = `<div class="card">
     <h3>Welcome</h3>
     <p>This budget is empty. Import the backup file to load your data:
-    go to <b>More → Import backup</b> and choose the seed backup JSON.</p></div>`;
+    use the <b>Import backup</b> button below (also under <b>More → Import backup</b>)
+    and choose the seed backup JSON.</p>
+    <div class="addrow"><button class="btn secondary small" data-act="importbackup">Import backup…</button></div>
+    <input type="file" id="backup-file" accept=".json,application/json" class="hidden">
+  </div>`;
+  bindBackupImport();
   $("#ltb-val").textContent = "$0.00";
   $("#m-select").innerHTML = "";
 }
@@ -1359,6 +1364,14 @@ async function confirmStatementRow(row, itemId) {
 }
 
 /* ---------------- view binding & actions ---------------- */
+/* Shared by the More view and the empty-database welcome screen: wires the
+   Import backup button + hidden file input to the same handleBackupFile(). */
+function bindBackupImport() {
+  const bf = $("#backup-file");
+  if (bf) bf.addEventListener("change", async () => { if (bf.files[0]) await handleBackupFile(bf.files[0]); });
+  const impBtn = $("[data-act='importbackup']");
+  if (impBtn) impBtn.addEventListener("click", () => { const f = $("#backup-file"); if (f) f.click(); });
+}
 function bindView(flows) {
   $$(".planned-edit").forEach(inp => {
     const line = lineById(Number(inp.dataset.line));
@@ -1386,10 +1399,7 @@ function bindView(flows) {
   });
   const isel = $("#imp-select");
   if (isel) isel.addEventListener("change", () => { UI.reviewImportId = Number(isel.value); render(); });
-  const bf = $("#backup-file");
-  if (bf) bf.addEventListener("change", async () => { if (bf.files[0]) await handleBackupFile(bf.files[0]); });
-  const impBtn = $("[data-act='importbackup']");
-  if (impBtn) impBtn.addEventListener("click", () => { const f = $("#backup-file"); if (f) f.click(); });
+  bindBackupImport();
 }
 
 async function handleAct(el, e) {
