@@ -562,6 +562,24 @@ function balanceCheck(month, flows) {
     expectedNotYetReceived: Math.max(0, t.incPlanned - t.received),
   };
 }
+function isMonthlyFlow(line) {
+  // Monthly-flow money: the Spending group (this month's expected spend), plus
+  // any item with a due date set — a bill, where Remaining is what's still owed
+  // this month. Everything else is a pot, where Available is the only
+  // "remaining" that means anything. Income lines are never monthly-flow here.
+  if (isIncomeItem(line.itemId)) return false;
+  const item = itemById(line.itemId) || {};
+  const gname = (groupById(line.groupId) || {}).name || line.groupName;
+  return gname === "Spending" || !!item.dueDay;
+}
+function stillToPay(month, flows) {
+  // Informational only: expected/required money still to go out this month —
+  // the monthly-flow lines, each contributing max(Planned − Spent, 0) so an
+  // overspent line never reduces it. NOT part of the Total Available Dollars
+  // difference or the balancer math.
+  return S.monthLines.filter(l => l.month === month && isMonthlyFlow(l))
+    .reduce((s, l) => s + Math.max(0, l.plannedCents + (flows.get(l.id) || 0)), 0);
+}
 function activeMonth() {
   const ms = monthsSorted();
   if (!ms.length) return monthOf(todayStr());
@@ -659,10 +677,13 @@ function lineCard(line, flows) {
   const closed = S.months[line.month] && S.months[line.month].closed;
   // Non-income lines: Planned is a contribution into the item's accumulated pot, not a
   // spending cap — so the bar shows the share of the pot (Available + Spent) used this
-  // month, and red appears only when the pot is overdrawn (Available < 0). There is no
-  // Remaining column: Available IS what's remaining in the pot. `remaining` is kept
-  // only for the due-date "coming up" check below.
+  // month, and red appears only when the pot is overdrawn (Available < 0). For pot
+  // items Available IS what's remaining, so no Remaining cell. Monthly-flow lines
+  // only (Spending group, or an item with a due date — a bill) also show a
+  // Remaining cell (Planned − Spent): informational, always normal color, never
+  // an alarm. `remaining` is also used by the due-date "coming up" check below.
   // Income lines keep the received-vs-planned display.
+  const monthlyFlow = isMonthlyFlow(line);
   const pot = avail + spent;
   const pct = income
     ? (line.plannedCents > 0 ? Math.min(100, Math.max(0, spent / line.plannedCents * 100)) : 0)
@@ -691,6 +712,7 @@ function lineCard(line, flows) {
                  : `<input class="planned-edit money" data-line="${line.id}" value="${fmt(line.plannedCents)}" inputmode="numeric" aria-label="Planned for ${esc(line.itemName)}">`}
       </div>
       <div class="cell"><div class="l">${income ? "Received" : "Spent"}</div><div class="n">${fmt(spent)}</div></div>
+      ${monthlyFlow ? `<div class="cell"><div class="l">Remaining</div><div class="n">${fmt(remaining)}</div></div>` : ""}
       <div class="cell avail"><div class="l">Available</div><div class="n ${avail < 0 ? "neg" : ""}">${fmt(avail)}</div></div>
     </div>
     ${target}
@@ -903,6 +925,8 @@ function accountsView(flows) {
     <div class="kv"><span class="k">Accounts total</span><span class="v">${fmt(bc.accountsTotal)}</span></div>
     <div class="kv"><span class="k">Difference</span><span class="v ${bc.difference === 0 ? "pos" : "neg"}">${fmt(bc.difference)}</span></div>
     <div class="kv"><span class="k">Remaining to spend (planned − spent)</span><span class="v">${fmt(bc.remainingToSpend)}</span></div>
+    <div class="kv"><span class="k">Still to pay this month</span><span class="v">${fmt(stillToPay(activeMonth(), flows))}</span></div>
+    <div class="small muted">Expected/required payments still to go out (Spending + due-date items) — informational only.</div>
     <div class="kv"><span class="k muted">Expected, not yet received (not counted)</span><span class="v muted">${fmt(bc.expectedNotYetReceived)}</span></div>
   </div>`;
   h += balancerPanel(flows);
