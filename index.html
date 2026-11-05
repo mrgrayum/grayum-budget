@@ -16,6 +16,9 @@
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;}
+  /* The page must never scroll sideways: `clip` (with `hidden` as the
+     fallback for older engines) guards against any stray wide element. */
+  html,body{overflow-x:hidden; overflow-x:clip;}
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
        background:var(--bg); color:var(--ink); font-size:15px; line-height:1.4;}
   button{font:inherit; cursor:pointer;}
@@ -69,6 +72,28 @@
   .ltb .val{font-size:22px; font-weight:800; line-height:1.1;}
   .overbar{background:var(--red); color:#fff; font-weight:700; text-align:center; padding:7px 10px; font-size:14px;}
   .closedbar{background:#5b6b7d; color:#fff; font-weight:600; text-align:center; padding:6px 10px; font-size:13px;}
+
+  /* ---------- narrow screens (phones, ≤480px) ----------
+     Header stacks: title + Left to Budget share the first row, the month
+     navigation wraps to its own full-width row — nothing is clipped and
+     the page cannot overflow sideways. Account cards shrink to fit
+     3-across instead of forcing their desktop min-width. */
+  @media(max-width:480px){
+    header.topbar{padding:12px 12px calc(12px + env(safe-area-inset-bottom,0px));}
+    .topbar .row{flex-wrap:wrap; gap:8px 10px;}
+    .topbar .brand{font-size:14.5px;}
+    .topbar .who{font-size:11px;}
+    .ltb .lbl{font-size:10px;}
+    .ltb .val{font-size:20px;}
+    .monthnav{order:3; flex:1 1 100%; justify-content:space-between; gap:8px;}
+    .monthnav button{width:38px; height:36px; flex:0 0 auto;}
+    .monthnav select{flex:1; min-width:0; text-align:center; padding:8px 4px;}
+    .acctrow{gap:8px; overflow-x:visible; padding-bottom:0;}
+    .acctbox{min-width:0; padding:10px 8px;}
+    .acctbox .nm{font-size:10.5px; letter-spacing:.2px;}
+    .acctbox .bl{font-size:16px;}
+    .acctbox .cl{font-size:10.5px;}
+  }
 
   main{max-width:980px; margin:0 auto; padding:14px 12px 110px;}
   @media(min-width:760px){ main{padding-bottom:30px;} }
@@ -303,17 +328,21 @@ function download(filename, text, type) {
    Typing "." switches to explicit-dollar entry: the digits typed so
    far become whole dollars and following digits are decimal cents.
 ----------------------------------------------------------- */
-function attachMoneyInput(input, initialCents) {
+function attachMoneyInput(input, initialCents, opts) {
+  // opts.dollar: include the "$" in the rendered value (used by the Planned
+  // cell so it matches the $ shown on the other cells). Display-only — the
+  // buffers, key handling, and cents-first entry are identical either way.
+  const showDollar = !!(opts && opts.dollar);
   let mode = "cents";                 // 'cents' | 'dollars'
   let digits = String(Math.abs(initialCents || 0)); // cents-mode buffer
   let dollarText = "";                // dollars-mode buffer (e.g. "1234.5")
   function render() {
     if (mode === "cents") {
-      input.value = digits === "" ? "" : fmtPlain(parseInt(digits, 10) || 0);
+      input.value = digits === "" ? "" : (showDollar ? fmt(parseInt(digits, 10) || 0) : fmtPlain(parseInt(digits, 10) || 0));
     } else {
       const parts = dollarText.split(".");
       const intPart = parts[0] === "" ? "" : Number(parts[0]).toLocaleString("en-US");
-      input.value = parts.length > 1 ? intPart + "." + parts[1] : intPart + ".";
+      input.value = (showDollar ? "$" : "") + (parts.length > 1 ? intPart + "." + parts[1] : intPart + ".");
     }
     input.setSelectionRange(input.value.length, input.value.length);
   }
@@ -648,7 +677,7 @@ function lineCard(line, flows) {
     <div class="line-nums">
       <div class="cell"><div class="l">Planned</div>
         ${closed ? `<div class="n">${fmt(line.plannedCents)}</div>`
-                 : `<input class="planned-edit money" data-line="${line.id}" value="${fmtPlain(line.plannedCents)}" inputmode="numeric" aria-label="Planned for ${esc(line.itemName)}">`}
+                 : `<input class="planned-edit money" data-line="${line.id}" value="${fmt(line.plannedCents)}" inputmode="numeric" aria-label="Planned for ${esc(line.itemName)}">`}
       </div>
       <div class="cell"><div class="l">${income ? "Received" : "Spent"}</div><div class="n">${fmt(spent)}</div></div>
       <div class="cell"><div class="l">Remaining</div><div class="n ${remaining < 0 ? "neg" : ""}">${fmt(remaining)}</div></div>
@@ -1389,7 +1418,7 @@ function bindView(flows) {
   $$(".planned-edit").forEach(inp => {
     const line = lineById(Number(inp.dataset.line));
     if (!line) return;
-    const mi = attachMoneyInput(inp, line.plannedCents);
+    const mi = attachMoneyInput(inp, line.plannedCents, { dollar: true });
     inp.addEventListener("blur", async () => {
       const v = mi.getCents();
       if (v !== line.plannedCents) await setDoc("monthLines", line.id, { ...line, plannedCents: v });
