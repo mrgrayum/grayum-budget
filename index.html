@@ -76,8 +76,10 @@
   /* ---------- narrow screens (phones, ≤480px) ----------
      Header stacks: title + Left to Budget share the first row, the month
      navigation wraps to its own full-width row — nothing is clipped and
-     the page cannot overflow sideways. Account cards shrink to fit
-     3-across instead of forcing their desktop min-width. */
+     the page cannot overflow sideways. (Phone sizing for the account
+     boxes lives at the END of this stylesheet: the base .acctbox rules
+     sit below this block, so overrides placed here would lose the
+     cascade and never apply.) */
   @media(max-width:480px){
     header.topbar{padding:12px 12px calc(12px + env(safe-area-inset-bottom,0px));}
     .topbar .row{flex-wrap:wrap; gap:8px 10px;}
@@ -88,11 +90,6 @@
     .monthnav{order:3; flex:1 1 100%; justify-content:space-between; gap:8px;}
     .monthnav button{width:38px; height:36px; flex:0 0 auto;}
     .monthnav select{flex:1; min-width:0; text-align:center; padding:8px 4px;}
-    .acctrow{gap:8px; overflow-x:visible; padding-bottom:0;}
-    .acctbox{min-width:0; padding:10px 8px;}
-    .acctbox .nm{font-size:10.5px; letter-spacing:.2px;}
-    .acctbox .bl{font-size:16px;}
-    .acctbox .cl{font-size:10.5px;}
   }
 
   main{max-width:980px; margin:0 auto; padding:14px 12px 110px;}
@@ -112,15 +109,22 @@
   /* ---------- cards & panels ---------- */
   .card{background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:14px; margin-bottom:12px;}
   .card h3{margin:0 0 8px; font-size:13px; text-transform:uppercase; letter-spacing:.7px; color:var(--navy);}
-  .acctrow{display:flex; gap:10px; overflow-x:auto; padding-bottom:2px;}
-  .acctbox{flex:1 1 0; min-width:150px; background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow);
-    padding:12px 14px; cursor:pointer; border-top:4px solid var(--green);}
-  .acctbox .nm{font-size:12.5px; font-weight:700; color:var(--navy); text-transform:uppercase; letter-spacing:.4px;}
-  .acctbox .bl{font-size:21px; font-weight:800; margin:2px 0;}
-  .acctbox .cl{font-size:12px; color:var(--muted);}
+  /* Account boxes: equal-width grid columns at every viewport size — all
+     boxes are always fully visible; the row never scrolls sideways. */
+  .acctrow{display:grid; grid-template-columns:repeat(auto-fit,minmax(0,1fr)); gap:10px;}
+  .acctbox{min-width:0; background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow);
+    padding:10px 12px; cursor:pointer; border-top:4px solid var(--green);}
+  .acctbox .nm{font-size:11.5px; font-weight:700; color:var(--navy); text-transform:uppercase; letter-spacing:.4px;}
+  .acctbox .bl{font-size:19px; font-weight:800; margin:2px 0; white-space:nowrap;}
+  .acctbox .cl{font-size:11.5px; color:var(--muted);}
   .kv{display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px dashed var(--line);}
   .kv:last-child{border-bottom:none;}
   .kv .k{color:var(--muted);} .kv .v{font-weight:700;}
+  /* Total Available Dollars panels: tighter rows so the whole panel stays
+     short, especially on a phone. */
+  .card.tad{padding:10px 12px;}
+  .card.tad h3{margin-bottom:4px;}
+  .card.tad .kv{padding:3px 0; font-size:14px;}
   .kv .v.neg{color:var(--red);}
   .muted{color:var(--muted);} .small{font-size:12.5px;}
   .pos{color:var(--green-d); font-weight:700;} .neg{color:var(--red); font-weight:700;}
@@ -193,6 +197,17 @@
   .empty{color:var(--muted); text-align:center; padding:26px 10px;}
   .toast{position:fixed; left:50%; transform:translateX(-50%); bottom:96px; z-index:60; background:var(--navy); color:#fff;
     padding:10px 16px; border-radius:10px; font-size:13.5px; box-shadow:var(--shadow); max-width:92vw; text-align:center;}
+  /* Phone tightening for the account boxes — deliberately placed after the
+     base component rules so these declarations win the cascade at ≤480px:
+     at 390px wide, three boxes sit side by side (≈117px each) with the full
+     balance and "Cleared $X" caption visible, no sideways scrolling. */
+  @media(max-width:480px){
+    .acctrow{gap:8px;}
+    .acctbox{padding:9px 8px;}
+    .acctbox .nm{font-size:10.5px; letter-spacing:.2px;}
+    .acctbox .bl{font-size:16px;}
+    .acctbox .cl{font-size:10.5px;}
+  }
   @media print{
     nav.tabbar, header.topbar .who, .fab, .mvbtn, .star, .addrow, .no-print{display:none !important;}
     body{background:#fff;} main{padding:0;}
@@ -636,9 +651,13 @@ function renderHeader(flows) {
 }
 
 function tadPanel(flows) {
-  const bc = balanceCheck(UI.month, flows);
+  // Always computed for the ACTIVE month, never the browsed month — same
+  // anchor as the Account Balancer. A browsed future placeholder month's
+  // roll-forward counts income that hasn't arrived yet, which used to show
+  // a bogus negative Difference (e.g. −$5,846.35 while browsing December).
+  const bc = balanceCheck(activeMonth(), flows);
   const diffCls = bc.difference === 0 ? "pos" : "neg";
-  return `<div class="card">
+  return `<div class="card tad">
     <h3>Total Available Dollars</h3>
     <div class="kv"><span class="k">In your accounts</span><span class="v">${fmt(bc.accountsTotal)}</span></div>
     <div class="kv"><span class="k">Budget (actual)</span><span class="v">${fmt(bc.budgetLayer)}</span></div>
@@ -912,7 +931,7 @@ function accountsView(flows) {
 }
 function tadPanelFor(month, flows) {
   const bc = balanceCheck(month, flows);
-  return `<div class="card"><h3>Total Available Dollars</h3>
+  return `<div class="card tad"><h3>Total Available Dollars</h3>
     <div class="kv"><span class="k">In your accounts</span><span class="v">${fmt(bc.accountsTotal)}</span></div>
     <div class="kv"><span class="k">Budget (actual)</span><span class="v">${fmt(bc.budgetLayer)}</span></div>
     <div class="kv"><span class="k">Difference</span><span class="v ${bc.difference === 0 ? "pos" : "neg"}">${fmt(bc.difference)}</span></div>
@@ -920,8 +939,27 @@ function tadPanelFor(month, flows) {
 }
 
 /* ---------------- more ---------------- */
+function monthsListHtml() {
+  const ms = monthsSorted();
+  if (!ms.length) return `<div class="empty">No months yet.</div>`;
+  return ms.map(m => {
+    const n = S.monthLines.filter(l => l.month === m).length;
+    const closed = S.months[m] && S.months[m].closed;
+    return `<div class="txnrow"><div class="main">
+      <div class="merch">${monthLabel(m)}</div>
+      <div class="meta">${n} budget lines${closed ? " · closed" : ""}</div></div>
+      <button class="btn small secondary" data-act="restartmonth" data-month="${m}">Restart from previous month</button>
+      <button class="btn small secondary" data-act="deletemonth" data-month="${m}">Delete month</button></div>`;
+  }).join("");
+}
 function moreView() {
   return `
+  <div class="card"><h3>Months</h3>
+    <div id="months-list">${monthsListHtml()}</div>
+    <p class="small muted">Delete removes a month and its budget lines — a month with transactions
+    recorded in it can't be deleted. Restart replaces a month's lines with a fresh copy of the
+    month before it, for when a placeholder month was created before its plan was ready.</p>
+  </div>
   <div class="card"><h3>Recurring transactions</h3>
     <div id="recurring-list">${recurringListHtml()}</div>
     <div class="addrow"><button class="btn secondary small" data-act="addrecurring">+ Add recurring</button>
@@ -989,16 +1027,70 @@ async function ensureMonth(month, silent) {
   const ids = await nextIds("monthLines", srcLines.length);
   const ops = [{ type: "set", coll: "months", id: month, data: { month, closed: false, memo: "" } }];
   srcLines.forEach((l, i) => {
-    const item = itemById(l.itemId);
-    const planned = item && item.recurringPlannedCents != null ? item.recurringPlannedCents : l.plannedCents;
-    ops.push({ type: "set", coll: "monthLines", id: ids[i], data: {
-      id: ids[i], month, itemId: l.itemId, groupId: l.groupId,
-      itemName: item ? item.name : l.itemName, groupName: l.groupName,
-      plannedCents: planned, sortOrder: l.sortOrder } });
+    ops.push({ type: "set", coll: "monthLines", id: ids[i], data: copiedLineData(l, ids[i], month) });
   });
   await batchWrite(ops);
   toast(monthLabel(month) + " created");
   return true;
+}
+/* One copied-forward budget line, exactly as ensureMonth() builds it: same
+   item, group and order; the item's recurring Planned wins when one is set.
+   No opening is stored on the line — roll-forward derives from the earlier
+   months' results. Shared by month creation and month restart so the two
+   can never drift apart. */
+function copiedLineData(l, id, month) {
+  const item = itemById(l.itemId);
+  const planned = item && item.recurringPlannedCents != null ? item.recurringPlannedCents : l.plannedCents;
+  return { id, month, itemId: l.itemId, groupId: l.groupId,
+    itemName: item ? item.name : l.itemName, groupName: l.groupName,
+    plannedCents: planned, sortOrder: l.sortOrder };
+}
+
+/* ---------------- months: delete / restart ---------------- */
+/* A month "has activity" when any recorded transaction split lands on one
+   of its lines. Such a month is history and is never deleted or restarted. */
+function monthHasActivity(month) {
+  const ids = new Set(S.monthLines.filter(l => l.month === month).map(l => l.id));
+  return S.splits.some(s => ids.has(s.monthLineId));
+}
+async function deleteMonth(month) {
+  if (monthsSorted().length <= 1) { toast("That's the only month left — it can't be deleted."); return; }
+  if (monthHasActivity(month)) { toast("This month has transactions recorded, so it can't be deleted."); return; }
+  const ok = await confirmActionModal("Delete " + monthLabel(month) + "?",
+    "Its budget lines will be removed. This can't be undone.", "Delete month");
+  if (!ok) return;
+  const ops = S.monthLines.filter(l => l.month === month)
+    .map(l => ({ type: "delete", coll: "monthLines", id: l.id }));
+  ops.push({ type: "delete", coll: "months", id: month });
+  await batchWrite(ops);
+  if (UI.month === month) {
+    const rest = monthsSorted().filter(m => m !== month);
+    if (rest.length) { UI.month = rest[rest.length - 1]; render(); }
+  }
+  toast(monthLabel(month) + " deleted");
+}
+async function restartMonth(month) {
+  const ms = monthsSorted();
+  const idx = ms.indexOf(month);
+  if (idx <= 0) { toast("There's no previous month to restart " + monthLabel(month) + " from."); return; }
+  if (monthHasActivity(month)) { toast("This month has transactions recorded, so it can't be restarted."); return; }
+  const source = ms[idx - 1];
+  const ok = await confirmActionModal("Restart " + monthLabel(month) + "?",
+    "Restart " + monthLabel(month) + " from " + monthLabel(source) +
+    "? Its current lines will be replaced with a fresh copy of " + monthLabel(source) + "'s.",
+    "Restart month");
+  if (!ok) return;
+  const srcLines = S.monthLines.filter(l => l.month === source)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  const ids = await nextIds("monthLines", srcLines.length);
+  const ops = S.monthLines.filter(l => l.month === month)
+    .map(l => ({ type: "delete", coll: "monthLines", id: l.id }));
+  ops.push({ type: "set", coll: "months", id: month, data: { month, closed: false, memo: "" } });
+  srcLines.forEach((l, i) => {
+    ops.push({ type: "set", coll: "monthLines", id: ids[i], data: copiedLineData(l, ids[i], month) });
+  });
+  await batchWrite(ops);
+  toast(monthLabel(month) + " restarted from " + monthLabel(source));
 }
 
 /* ---------------- transaction form ---------------- */
@@ -1476,6 +1568,8 @@ async function handleAct(el, e) {
       if (await ensureMonth(nm)) { UI.month = nm; render(); }
       break;
     }
+    case "deletemonth": await deleteMonth(el.dataset.month); break;
+    case "restartmonth": await restartMonth(el.dataset.month); break;
     case "savememo": {
       const memo = $("#month-memo").value;
       await setDoc("months", UI.month, { ...(S.months[UI.month] || { month: UI.month, closed: false }), month: UI.month, memo });
@@ -1826,6 +1920,23 @@ function confirmBackupRestore() {
       budget item, account and transaction — with the backup's contents.
       This cannot be undone except by restoring another backup.</p>
       ${modalActions("Import")}`);
+    const root = $("#modal-root");
+    $("[data-save]", root).addEventListener("click", () => settle(true));
+    $$("[data-close]", root).forEach(b => b.addEventListener("click", () => settle(false)));
+    $("#modal-bg").addEventListener("click", e => { if (e.target.id === "modal-bg") settle(false); });
+    bindModalClose();
+  });
+}
+/* Generic in-page yes/no confirmation, same pattern as confirmBackupRestore():
+   resolves true only when the user taps the confirm button; Cancel or a
+   backdrop click resolves false. Deliberately NOT a native confirm() dialog. */
+function confirmActionModal(title, bodyText, confirmLabel) {
+  return new Promise(resolve => {
+    let settled = false;
+    const settle = ok => { if (settled) return; settled = true; closeModal(); resolve(ok); };
+    openModal(`<h2>${esc(title)}</h2>
+      <p>${esc(bodyText)}</p>
+      ${modalActions(confirmLabel)}`);
     const root = $("#modal-root");
     $("[data-save]", root).addEventListener("click", () => settle(true));
     $$("[data-close]", root).forEach(b => b.addEventListener("click", () => settle(false)));
