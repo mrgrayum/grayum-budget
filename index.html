@@ -659,8 +659,9 @@ function lineCard(line, flows) {
   const closed = S.months[line.month] && S.months[line.month].closed;
   // Non-income lines: Planned is a contribution into the item's accumulated pot, not a
   // spending cap — so the bar shows the share of the pot (Available + Spent) used this
-  // month, and red appears only when the pot is overdrawn (Available < 0). A negative
-  // Remaining (spent more than this month's contribution) is normal and never red.
+  // month, and red appears only when the pot is overdrawn (Available < 0). There is no
+  // Remaining column: Available IS what's remaining in the pot. `remaining` is kept
+  // only for the due-date "coming up" check below.
   // Income lines keep the received-vs-planned display.
   const pot = avail + spent;
   const pct = income
@@ -669,7 +670,6 @@ function lineCard(line, flows) {
   const overCls = income
     ? (spent > line.plannedCents && line.plannedCents >= 0 ? "over" : "")
     : (avail < 0 ? "over" : "");
-  const remCls = income && remaining < 0 ? "neg" : "";
   let due = "";
   if (item.dueDay) {
     const [y, mo] = line.month.split("-").map(Number);
@@ -691,7 +691,6 @@ function lineCard(line, flows) {
                  : `<input class="planned-edit money" data-line="${line.id}" value="${fmt(line.plannedCents)}" inputmode="numeric" aria-label="Planned for ${esc(line.itemName)}">`}
       </div>
       <div class="cell"><div class="l">${income ? "Received" : "Spent"}</div><div class="n">${fmt(spent)}</div></div>
-      <div class="cell"><div class="l">Remaining</div><div class="n ${remCls}">${fmt(remaining)}</div></div>
       <div class="cell avail"><div class="l">Available</div><div class="n ${avail < 0 ? "neg" : ""}">${fmt(avail)}</div></div>
     </div>
     ${target}
