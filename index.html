@@ -682,7 +682,9 @@ function lineCard(line, flows) {
   // spending categories included — so cards show Planned / Spent / Available only.
   // The internal `remaining` value (Planned − Spent) is never displayed; it only
   // feeds the due-date "coming up" check below.
-  // Income lines keep the received-vs-planned display.
+  // Income lines keep the received-vs-planned display, and their third figure is
+  // labelled Outstanding (still owed to him), not Available — "available" is a
+  // spending word and doesn't belong on income.
   const pot = avail + spent;
   const pct = income
     ? (line.plannedCents > 0 ? Math.min(100, Math.max(0, spent / line.plannedCents * 100)) : 0)
@@ -713,7 +715,7 @@ function lineCard(line, flows) {
                  : `<input class="planned-edit money" data-line="${line.id}" value="${fmt(line.plannedCents)}" inputmode="numeric" aria-label="Planned for ${esc(line.itemName)}">`}
       </div>
       <div class="cell"><div class="l">${income ? "Received" : "Spent"}</div><div class="n">${fmt(spent)}</div></div>
-      <div class="cell avail"><div class="l">Available</div><div class="n ${avail < 0 ? "neg" : ""}">${fmt(avail)}</div></div>
+      <div class="cell avail"><div class="l">${income ? "Outstanding" : "Available"}</div><div class="n ${avail < 0 ? "neg" : ""}">${fmt(avail)}</div></div>
     </div>
     ${target}
     <div class="progress"><div class="${overCls}" style="width:${pct}%"></div></div>
@@ -1307,7 +1309,7 @@ function openItemDetail(lineId) {
     .sort((a, b) => b.date.localeCompare(a.date));
   const moves = S.budgetMoves.filter(mv => mv.month === line.month && (mv.fromItemId === line.itemId || mv.toItemId === line.itemId));
   openModal(`<h2>${esc(line.itemName)}</h2>
-    <div class="kv"><span class="k">Available (${monthLabel(line.month)})</span><span class="v ${avail < 0 ? "neg" : ""}">${fmt(avail)}</span></div>
+    <div class="kv"><span class="k">${isIncomeItem(line.itemId) ? "Outstanding" : "Available"} (${monthLabel(line.month)})</span><span class="v ${avail < 0 ? "neg" : ""}">${fmt(avail)}</span></div>
     <div class="kv"><span class="k">Planned</span><span class="v">${fmt(line.plannedCents)}</span></div>
     ${fieldHtml("Item name", `<input type="text" id="it-name" value="${esc(item.name || line.itemName)}">`,
       "Renaming updates this item from the current month on — past months keep the name they had.")}
