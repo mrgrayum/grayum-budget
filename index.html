@@ -44,6 +44,13 @@
     border-radius:10px; background:#fff; color:var(--ink);}
   .field input:focus,.field select:focus,.field textarea:focus{outline:none; border-color:var(--green);}
   .field .hint{font-size:12px; color:var(--muted); margin-top:4px;}
+  /* Backup file picker: a real, visible input (NOT display:none) so people and
+     browser file-upload tooling can target it directly. */
+  .filepick{margin-top:8px;}
+  .filepick input[type="file"]{display:block; width:100%; font-size:13px; color:var(--muted);}
+  .filepick input[type="file"]::file-selector-button{font:inherit; font-weight:600; cursor:pointer;
+    border:none; border-radius:9px; padding:8px 12px; margin-right:10px; background:var(--navy); color:#fff;}
+  .filepick input[type="file"]::file-selector-button:hover{background:var(--navy2);}
   .notice{background:#fff7e6; border:1px solid #f0d48a; color:#6b5310; border-radius:10px; padding:10px 12px; font-size:13px; margin-bottom:14px;}
 
   /* ---------- app frame ---------- */
@@ -568,10 +575,10 @@ function renderEmptyDatabase() {
   $("#main").innerHTML = `<div class="card">
     <h3>Welcome</h3>
     <p>This budget is empty. Import the backup file to load your data:
-    use the <b>Import backup</b> button below (also under <b>More → Import backup</b>)
+    use the <b>Import backup</b> button below or the file picker (also under <b>More → Import backup</b>)
     and choose the seed backup JSON.</p>
     <div class="addrow"><button class="btn secondary small" data-act="importbackup">Import backup…</button></div>
-    <input type="file" id="backup-file" accept=".json,application/json" class="hidden">
+    <div class="filepick"><input type="file" id="backup-file" accept=".json,application/json" aria-label="Choose backup file"></div>
   </div>`;
   bindBackupImport();
   $("#ltb-val").textContent = "$0.00";
@@ -884,7 +891,7 @@ function moreView() {
     Restoring replaces everything in the shared budget with the backup's contents.</p>
     <div class="addrow"><button class="btn secondary small" data-act="exportbackup">Download backup JSON</button>
     <button class="btn secondary small" data-act="importbackup">Import backup…</button></div>
-    <input type="file" id="backup-file" accept=".json,application/json" class="hidden">
+    <div class="filepick"><input type="file" id="backup-file" accept=".json,application/json" aria-label="Choose backup file"></div>
   </div>
   <div class="card"><h3>Export</h3>
     <div class="addrow"><button class="btn secondary small" data-act="exporttxns">Transactions CSV</button>
@@ -1365,10 +1372,16 @@ async function confirmStatementRow(row, itemId) {
 
 /* ---------------- view binding & actions ---------------- */
 /* Shared by the More view and the empty-database welcome screen: wires the
-   Import backup button + hidden file input to the same handleBackupFile(). */
+   Import backup button + visible file input to the same handleBackupFile().
+   The input stays in the layout (never display:none) so browser file-upload
+   tooling can target it directly; the button also triggers it for convenience. */
 function bindBackupImport() {
   const bf = $("#backup-file");
-  if (bf) bf.addEventListener("change", async () => { if (bf.files[0]) await handleBackupFile(bf.files[0]); });
+  if (bf) bf.addEventListener("change", async () => {
+    const f = bf.files[0];
+    if (!f) return;
+    try { await handleBackupFile(f); } finally { bf.value = ""; } // reset so the same file can be picked again
+  });
   const impBtn = $("[data-act='importbackup']");
   if (impBtn) impBtn.addEventListener("click", () => { const f = $("#backup-file"); if (f) f.click(); });
 }
@@ -1759,6 +1772,26 @@ function exportBackup() {
   download(`budget-backup-${todayStr()}.json`, JSON.stringify(buildBackup(), null, 2), "application/json");
   toast("Backup downloaded");
 }
+/* In-page restore confirmation — deliberately NOT a native dialog:
+   automated browsers dismiss those, which silently cancelled the restore.
+   Resolves true only when the user taps Import; Cancel or a backdrop
+   click resolves false. */
+function confirmBackupRestore() {
+  return new Promise(resolve => {
+    let settled = false;
+    const settle = ok => { if (settled) return; settled = true; closeModal(); resolve(ok); };
+    openModal(`<h2>Restore this backup?</h2>
+      <p>Importing <b>replaces ALL current budget data</b> in the shared budget — every month,
+      budget item, account and transaction — with the backup's contents.
+      This cannot be undone except by restoring another backup.</p>
+      ${modalActions("Import")}`);
+    const root = $("#modal-root");
+    $("[data-save]", root).addEventListener("click", () => settle(true));
+    $$("[data-close]", root).forEach(b => b.addEventListener("click", () => settle(false)));
+    $("#modal-bg").addEventListener("click", e => { if (e.target.id === "modal-bg") settle(false); });
+    bindModalClose();
+  });
+}
 async function handleBackupFile(file) {
   let data;
   try { data = JSON.parse(await file.text()); }
@@ -1766,7 +1799,7 @@ async function handleBackupFile(file) {
   if (!data || !Array.isArray(data.items) || !Array.isArray(data.monthLines) || !Array.isArray(data.accounts)) {
     toast("That doesn't look like a budget backup"); return;
   }
-  if (!confirm("Restore this backup? It REPLACES the entire shared budget (all months, items, accounts and transactions) with the backup's contents. This cannot be undone except by restoring another backup.")) return;
+  if (!(await confirmBackupRestore())) return;
   const ops = [];
   COLLECTIONS.forEach(coll => S[coll].forEach(doc => ops.push({ type: "delete", coll, id: doc.id })));
   Object.keys(S.months).forEach(m => ops.push({ type: "delete", coll: "months", id: m }));
