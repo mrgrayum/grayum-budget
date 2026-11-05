@@ -1,0 +1,1922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Grayum Budget</title>
+<meta name="theme-color" content="#0d2440">
+<style>
+  :root{
+    --navy:#0d2440; --navy2:#123058; --ink:#14202e; --muted:#68788a;
+    --green:#1f9d63; --green-d:#157347; --green-soft:#e5f5ec;
+    --red:#d92d20; --red-soft:#fdecea;
+    --line:#dde4ec; --bg:#f2f5f8; --card:#ffffff;
+    --radius:14px;
+    --shadow:0 1px 3px rgba(13,36,64,.10), 0 4px 14px rgba(13,36,64,.06);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg); color:var(--ink); font-size:15px; line-height:1.4;}
+  button{font:inherit; cursor:pointer;}
+  input,select,textarea{font:inherit;}
+  .hidden{display:none !important;}
+
+  /* ---------- auth ---------- */
+  .auth-wrap{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px;
+    background:linear-gradient(160deg, var(--navy) 0%, var(--navy2) 60%, #17573a 130%);}
+  .auth-card{background:#fff; border-radius:18px; padding:28px 24px; max-width:380px; width:100%; box-shadow:var(--shadow);}
+  .auth-card h1{margin:0 0 4px; font-size:24px; color:var(--navy);}
+  .auth-card p.sub{margin:0 0 18px; color:var(--muted); font-size:14px;}
+  .btn{display:inline-flex; align-items:center; justify-content:center; gap:8px; border:none; border-radius:10px;
+    padding:11px 16px; font-weight:600; background:var(--green); color:#fff; width:100%;}
+  .btn:hover{background:var(--green-d);}
+  .btn.secondary{background:#eef2f6; color:var(--navy);}
+  .btn.secondary:hover{background:#e0e7ef;}
+  .btn.danger{background:var(--red);}
+  .btn.small{width:auto; padding:7px 12px; font-size:13px;}
+  .btn:disabled{opacity:.5; cursor:not-allowed;}
+  .auth-card .divider{display:flex; align-items:center; gap:10px; color:var(--muted); font-size:12px; margin:16px 0;}
+  .auth-card .divider::before,.auth-card .divider::after{content:""; flex:1; border-top:1px solid var(--line);}
+  .field{margin-bottom:12px;}
+  .field label{display:block; font-size:12.5px; font-weight:600; color:var(--navy); margin-bottom:5px;}
+  .field input,.field select,.field textarea{width:100%; padding:10px 11px; border:1.5px solid var(--line);
+    border-radius:10px; background:#fff; color:var(--ink);}
+  .field input:focus,.field select:focus,.field textarea:focus{outline:none; border-color:var(--green);}
+  .field .hint{font-size:12px; color:var(--muted); margin-top:4px;}
+  .notice{background:#fff7e6; border:1px solid #f0d48a; color:#6b5310; border-radius:10px; padding:10px 12px; font-size:13px; margin-bottom:14px;}
+
+  /* ---------- app frame ---------- */
+  header.topbar{background:linear-gradient(150deg, var(--navy), var(--navy2)); color:#fff;
+    padding:14px 16px calc(14px + env(safe-area-inset-bottom,0px)); position:sticky; top:0; z-index:30;}
+  .topbar .row{display:flex; align-items:center; justify-content:space-between; gap:10px; max-width:980px; margin:0 auto;}
+  .topbar .brand{font-weight:700; font-size:15px; letter-spacing:.2px; opacity:.92;}
+  .topbar .who{font-size:12px; opacity:.75;}
+  .monthnav{display:flex; align-items:center; gap:6px;}
+  .monthnav button{background:rgba(255,255,255,.14); color:#fff; border:none; border-radius:9px; width:34px; height:34px; font-size:16px;}
+  .monthnav button:hover{background:rgba(255,255,255,.25);}
+  .monthnav select{background:rgba(255,255,255,.14); color:#fff; border:none; border-radius:9px; padding:8px 6px; font-weight:700; font-size:16px;}
+  .monthnav select option{color:var(--ink);}
+  .ltb{text-align:right;}
+  .ltb .lbl{font-size:11px; text-transform:uppercase; letter-spacing:.8px; opacity:.75;}
+  .ltb .val{font-size:22px; font-weight:800; line-height:1.1;}
+  .overbar{background:var(--red); color:#fff; font-weight:700; text-align:center; padding:7px 10px; font-size:14px;}
+  .closedbar{background:#5b6b7d; color:#fff; font-weight:600; text-align:center; padding:6px 10px; font-size:13px;}
+
+  main{max-width:980px; margin:0 auto; padding:14px 12px 110px;}
+  @media(min-width:760px){ main{padding-bottom:30px;} }
+
+  nav.tabbar{position:fixed; left:0; right:0; bottom:0; z-index:30; background:#fff; border-top:1px solid var(--line);
+    display:flex; padding-bottom:env(safe-area-inset-bottom,0px);}
+  nav.tabbar button{flex:1; background:none; border:none; padding:9px 2px 7px; font-size:11px; color:var(--muted);
+    display:flex; flex-direction:column; align-items:center; gap:2px;}
+  nav.tabbar button .ic{font-size:19px; line-height:1;}
+  nav.tabbar button.active{color:var(--green-d); font-weight:700;}
+  @media(min-width:760px){
+    nav.tabbar{position:sticky; top:0; bottom:auto; border-top:none; border-bottom:1px solid var(--line); justify-content:center;}
+    nav.tabbar button{flex:0 0 auto; padding:10px 22px; flex-direction:row; font-size:13.5px;}
+  }
+
+  /* ---------- cards & panels ---------- */
+  .card{background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:14px; margin-bottom:12px;}
+  .card h3{margin:0 0 8px; font-size:13px; text-transform:uppercase; letter-spacing:.7px; color:var(--navy);}
+  .acctrow{display:flex; gap:10px; overflow-x:auto; padding-bottom:2px;}
+  .acctbox{flex:1 1 0; min-width:150px; background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow);
+    padding:12px 14px; cursor:pointer; border-top:4px solid var(--green);}
+  .acctbox .nm{font-size:12.5px; font-weight:700; color:var(--navy); text-transform:uppercase; letter-spacing:.4px;}
+  .acctbox .bl{font-size:21px; font-weight:800; margin:2px 0;}
+  .acctbox .cl{font-size:12px; color:var(--muted);}
+  .kv{display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px dashed var(--line);}
+  .kv:last-child{border-bottom:none;}
+  .kv .k{color:var(--muted);} .kv .v{font-weight:700;}
+  .kv .v.neg{color:var(--red);}
+  .muted{color:var(--muted);} .small{font-size:12.5px;}
+  .pos{color:var(--green-d); font-weight:700;} .neg{color:var(--red); font-weight:700;}
+  .overflag{color:var(--red); font-weight:800;}
+
+  /* ---------- budget lines ---------- */
+  .grouphead{display:flex; justify-content:space-between; align-items:baseline; margin:18px 2px 8px;}
+  .grouphead .gn{font-size:16px; font-weight:800; color:var(--navy);}
+  .grouphead .gt{font-size:12.5px; color:var(--muted); font-weight:600;}
+  .line-card{background:#fff; border-radius:var(--radius); box-shadow:var(--shadow); padding:11px 13px; margin-bottom:9px;}
+  .line-top{display:flex; align-items:flex-start; gap:8px;}
+  .line-name{font-weight:700; font-size:15px; flex:1; cursor:pointer;}
+  .line-name .due{display:block; font-size:11.5px; color:var(--muted); font-weight:500;}
+  .line-name .due.soon{color:var(--red); font-weight:700;}
+  .star{background:none; border:none; font-size:17px; color:#c3cedb; padding:2px;}
+  .star.on{color:var(--green);}
+  .mvbtn{background:var(--green-soft); color:var(--green-d); border:none; border-radius:8px; width:30px; height:30px; font-size:15px; font-weight:700;}
+  .line-nums{display:flex; gap:6px; margin-top:8px;}
+  .line-nums .cell{flex:1; background:#f6f9fb; border-radius:9px; padding:6px 8px; text-align:center;}
+  .line-nums .cell .l{font-size:10px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted);}
+  .line-nums .cell .n{font-size:14.5px; font-weight:700;}
+  .line-nums .cell .n.neg{color:var(--red);}
+  .line-nums .cell.avail{background:var(--green-soft);}
+  .planned-edit{width:100%; border:none; background:transparent; text-align:center; font-weight:700; font-size:14.5px; padding:0; color:var(--ink);}
+  .planned-edit:focus{outline:none;}
+  .progress{height:5px; background:#e7edf3; border-radius:3px; margin-top:9px; overflow:hidden;}
+  .progress > div{height:100%; background:var(--green); border-radius:3px;}
+  .progress > div.over{background:var(--red);}
+  .addrow{display:flex; gap:8px; margin:6px 0 2px;}
+  .addrow .btn{flex:1;}
+
+  /* ---------- lists ---------- */
+  .txnrow{display:flex; gap:10px; align-items:flex-start; background:#fff; border-radius:12px; box-shadow:var(--shadow);
+    padding:10px 12px; margin-bottom:8px; cursor:pointer;}
+  .txnrow .main{flex:1; min-width:0;}
+  .txnrow .merch{font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .txnrow .meta{font-size:12px; color:var(--muted);}
+  .txnrow .amt{font-weight:800; white-space:nowrap;}
+  .clr{flex:0 0 auto; width:26px; height:26px; border-radius:50%; border:2px solid var(--line); background:#fff;
+    color:var(--green-d); font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center;}
+  .clr.on{background:var(--green); border-color:var(--green); color:#fff;}
+  .pill{display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:20px; background:#eef2f6; color:var(--navy);}
+  .pill.green{background:var(--green-soft); color:var(--green-d);}
+  .pill.red{background:var(--red-soft); color:var(--red);}
+  .pill.gray{background:#eef2f6; color:var(--muted);}
+  .searchbar{width:100%; padding:11px 13px; border:1.5px solid var(--line); border-radius:11px; margin-bottom:12px; background:#fff;}
+  .searchbar:focus{outline:none; border-color:var(--green);}
+
+  /* ---------- modal ---------- */
+  .modal-bg{position:fixed; inset:0; background:rgba(10,22,38,.55); z-index:50; display:flex; align-items:flex-end; justify-content:center;}
+  @media(min-width:760px){ .modal-bg{align-items:center;} }
+  .modal{background:#fff; width:100%; max-width:560px; max-height:92vh; overflow-y:auto; border-radius:18px 18px 0 0; padding:18px;}
+  @media(min-width:760px){ .modal{border-radius:18px;} }
+  .modal h2{margin:0 0 14px; font-size:18px; color:var(--navy);}
+  .modal .actions{display:flex; gap:8px; margin-top:14px;}
+  .modal .actions .btn{flex:1;}
+  .seg{display:flex; background:#eef2f6; border-radius:10px; padding:3px; margin-bottom:12px;}
+  .seg button{flex:1; border:none; background:none; padding:8px; border-radius:8px; font-weight:600; color:var(--muted);}
+  .seg button.on{background:#fff; color:var(--navy); box-shadow:0 1px 3px rgba(0,0,0,.12);}
+  .splitrow{display:flex; gap:8px; margin-bottom:8px; align-items:center;}
+  .splitrow select{flex:1.4;} .splitrow input{flex:1;}
+  .splitrow .rm{flex:0 0 auto; width:32px; height:38px;}
+  .checkrow{display:flex; gap:10px; align-items:flex-start; padding:8px 0; border-bottom:1px dashed var(--line);}
+  .checkrow:last-child{border-bottom:none;}
+  .checkrow .st{font-size:17px;}
+
+  .fab{position:fixed; right:16px; bottom:86px; z-index:40; width:56px; height:56px; border-radius:50%;
+    background:var(--green); color:#fff; border:none; font-size:27px; box-shadow:0 6px 18px rgba(21,115,71,.4);}
+  @media(min-width:760px){ .fab{bottom:26px;} }
+  .empty{color:var(--muted); text-align:center; padding:26px 10px;}
+  .toast{position:fixed; left:50%; transform:translateX(-50%); bottom:96px; z-index:60; background:var(--navy); color:#fff;
+    padding:10px 16px; border-radius:10px; font-size:13.5px; box-shadow:var(--shadow); max-width:92vw; text-align:center;}
+  @media print{
+    nav.tabbar, header.topbar .who, .fab, .mvbtn, .star, .addrow, .no-print{display:none !important;}
+    body{background:#fff;} main{padding:0;}
+  }
+</style>
+</head>
+<body>
+
+<!-- ======================= AUTH ======================= -->
+<div id="view-auth" class="auth-wrap hidden">
+  <div class="auth-card">
+    <h1>Grayum Budget</h1>
+    <p class="sub">Our household budget — invite only.</p>
+    <div id="auth-notice" class="notice hidden"></div>
+    <button id="btn-google" class="btn">Continue with Google</button>
+    <div class="divider">or</div>
+    <div class="field">
+      <label for="auth-email">Email me a sign-in link</label>
+      <input id="auth-email" type="email" autocomplete="email" placeholder="you@example.com">
+    </div>
+    <button id="btn-emaillink" class="btn secondary">Send sign-in link</button>
+    <p id="auth-msg" class="small muted" style="margin-top:12px;"></p>
+  </div>
+</div>
+
+<!-- ======================= DENIED ======================= -->
+<div id="view-denied" class="auth-wrap hidden">
+  <div class="auth-card">
+    <h1>Invite only</h1>
+    <p class="sub">Accounts are by invite only. This budget is private to the Grayum household —
+      the account you signed in with isn't on the invite list.</p>
+    <button id="btn-denied-signout" class="btn secondary">Sign out</button>
+  </div>
+</div>
+
+<!-- ======================= APP ======================= -->
+<div id="view-app" class="hidden">
+  <header class="topbar">
+    <div class="row">
+      <div>
+        <div class="brand">Grayum Budget</div>
+        <div class="who" id="who-line"></div>
+      </div>
+      <div class="monthnav" id="monthnav">
+        <button id="m-prev" title="Previous month">‹</button>
+        <select id="m-select"></select>
+        <button id="m-next" title="Next month">›</button>
+      </div>
+      <div class="ltb" id="ltb-box">
+        <div class="lbl">Left to Budget</div>
+        <div class="val" id="ltb-val">$0.00</div>
+      </div>
+    </div>
+  </header>
+  <div id="overbar" class="overbar hidden"></div>
+  <div id="closedbar" class="closedbar hidden"></div>
+
+  <nav class="tabbar" id="tabbar">
+    <button data-tab="budget" class="active"><span class="ic">▦</span>Budget</button>
+    <button data-tab="activity"><span class="ic">☰</span>Activity</button>
+    <button data-tab="review"><span class="ic">✓</span>Review</button>
+    <button data-tab="accounts"><span class="ic">▤</span>Accounts</button>
+    <button data-tab="more"><span class="ic">•••</span>More</button>
+  </nav>
+
+  <main id="main"></main>
+  <button id="fab" class="fab hidden" title="Add transaction">+</button>
+</div>
+
+<div id="modal-root"></div>
+<div id="toast-root"></div>
+
+<script src="firebase-config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+<script>
+"use strict";
+/* =====================================================================
+   Grayum Budget — hosted edition
+   Single shared household budget in Firestore. All money is integer
+   cents. Formulas mirror check_seed.py exactly (baseline-verified).
+   ===================================================================== */
+
+/* ---------------- helpers ---------------- */
+const $ = (sel, el) => (el || document).querySelector(sel);
+const $$ = (sel, el) => Array.from((el || document).querySelectorAll(sel));
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function fmt(c) {
+  const neg = c < 0, a = Math.abs(c);
+  return (neg ? "-$" : "$") + Math.floor(a / 100).toLocaleString("en-US") + "." + String(a % 100).padStart(2, "0");
+}
+function fmtPlain(c) { // no $ sign, for inputs
+  const neg = c < 0, a = Math.abs(c);
+  return (neg ? "-" : "") + Math.floor(a / 100).toLocaleString("en-US") + "." + String(a % 100).padStart(2, "0");
+}
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+function monthOf(dateStr) { return (dateStr || "").slice(0, 7); }
+function monthLabel(m) {
+  const [y, mo] = m.split("-").map(Number);
+  return new Date(y, mo - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+function addMonths(m, n) {
+  const [y, mo] = m.split("-").map(Number);
+  const d = new Date(y, mo - 1 + n, 1);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+}
+function addDays(dateStr, n) {
+  const [y, mo, da] = dateStr.split("-").map(Number);
+  const d = new Date(y, mo - 1, da + n);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+function toast(msg) {
+  const t = document.createElement("div");
+  t.className = "toast"; t.textContent = msg;
+  $("#toast-root").appendChild(t);
+  setTimeout(() => t.remove(), 3400);
+}
+function download(filename, text, type) {
+  const blob = new Blob([text], { type: type || "application/octet-stream" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+/* ---------------- money input (cents-first) ----------------
+   Typing digits builds the amount in cents: 1 2 3 4 -> $12.34.
+   Typing "." switches to explicit-dollar entry: the digits typed so
+   far become whole dollars and following digits are decimal cents.
+----------------------------------------------------------- */
+function attachMoneyInput(input, initialCents) {
+  let mode = "cents";                 // 'cents' | 'dollars'
+  let digits = String(Math.abs(initialCents || 0)); // cents-mode buffer
+  let dollarText = "";                // dollars-mode buffer (e.g. "1234.5")
+  function render() {
+    if (mode === "cents") {
+      input.value = digits === "" ? "" : fmtPlain(parseInt(digits, 10) || 0);
+    } else {
+      const parts = dollarText.split(".");
+      const intPart = parts[0] === "" ? "" : Number(parts[0]).toLocaleString("en-US");
+      input.value = parts.length > 1 ? intPart + "." + parts[1] : intPart + ".";
+    }
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
+  input.addEventListener("focus", () => { render(); });
+  input.addEventListener("keydown", e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key;
+    if (/^[0-9]$/.test(k)) {
+      e.preventDefault();
+      if (mode === "cents") {
+        digits = (digits + k).replace(/^0+(?=\d)/, "");
+        if (digits.length > 11) digits = digits.slice(0, 11);
+      } else {
+        const dec = dollarText.split(".")[1] || "";
+        if (dec.length >= 2) return;
+        dollarText += k;
+      }
+      render();
+    } else if (k === ".") {
+      e.preventDefault();
+      if (mode === "cents") {
+        mode = "dollars";
+        dollarText = String(Math.floor((parseInt(digits, 10) || 0) / 100)) + ".";
+        render();
+      }
+    } else if (k === "Backspace" || k === "Delete") {
+      e.preventDefault();
+      if (mode === "cents") {
+        digits = digits.slice(0, -1);
+      } else {
+        dollarText = dollarText.slice(0, -1);
+        if (!dollarText.includes(".")) { // fell back through the dot: return to cents mode
+          mode = "cents";
+          digits = String(Math.round(parseFloat(dollarText || "0") * 100));
+          dollarText = "";
+        }
+      }
+      render();
+    } else if (["Tab", "Enter", "ArrowLeft", "ArrowRight", "Home", "End", "Escape"].includes(k)) {
+      return;
+    } else if (k.length === 1) {
+      e.preventDefault();
+    }
+  });
+  input.addEventListener("paste", e => {
+    e.preventDefault();
+    const text = (e.clipboardData || window.clipboardData).getData("text") || "";
+    const num = parseFloat(text.replace(/[^0-9.\-]/g, ""));
+    if (isNaN(num)) return;
+    mode = "cents";
+    digits = String(Math.round(Math.abs(num) * 100));
+    render();
+  });
+  input.getCents = () => {
+    if (mode === "cents") return parseInt(digits, 10) || 0;
+    return Math.round((parseFloat(dollarText) || 0) * 100);
+  };
+  input.setCents = c => { mode = "cents"; digits = String(Math.abs(c || 0)); dollarText = ""; render(); };
+  render();
+  return input;
+}
+
+/* ---------------- firebase setup ---------------- */
+const CONFIG_PLACEHOLDER = !window.FIREBASE_CONFIG || window.FIREBASE_CONFIG.apiKey === "YOUR_API_KEY";
+let auth = null, db = null, storage = null;
+if (!CONFIG_PLACEHOLDER && window.firebase) {
+  firebase.initializeApp(window.FIREBASE_CONFIG);
+  auth = firebase.auth();
+  db = firebase.firestore();
+  try { storage = firebase.storage(); } catch (e) { storage = null; }
+}
+const ALLOWLIST = (window.ALLOWLIST_EMAILS || []).map(e => e.toLowerCase());
+function isAllowed(email) { return !!email && ALLOWLIST.includes(String(email).toLowerCase()); }
+
+/* ---------------- app state ---------------- */
+const COLLECTIONS = ["groups", "items", "monthLines", "accounts", "transactions", "splits",
+  "recurring", "statementImports", "statementRows", "merchantMappings", "budgetMoves"];
+const S = {
+  user: null,
+  groups: [], items: [], months: {}, monthLines: [], accounts: [],
+  transactions: [], splits: [], recurring: [], statementImports: [],
+  statementRows: [], merchantMappings: [], budgetMoves: [],
+  loaded: false,
+};
+const UI = {
+  tab: "budget",
+  month: monthOf(todayStr()),
+  activityQuery: "",
+  reviewImportId: null,
+};
+let unsubscribers = [];
+
+/* ---------------- firestore layer ---------------- */
+function colRef(name) { return db.collection(name); }
+function startListeners() {
+  stopListeners();
+  COLLECTIONS.forEach(name => {
+    unsubscribers.push(colRef(name).onSnapshot(snap => {
+      S[name] = snap.docs.map(d => d.data());
+      S.loaded = true;
+      render();
+    }, err => console.error("listener", name, err)));
+  });
+  unsubscribers.push(db.collection("months").onSnapshot(snap => {
+    S.months = {};
+    snap.docs.forEach(d => { S.months[d.id] = d.data(); });
+    S.loaded = true;
+    if (!S.months[UI.month]) UI.month = activeMonth();
+    render();
+  }, err => console.error("listener months", err)));
+}
+function stopListeners() { unsubscribers.forEach(u => u()); unsubscribers = []; }
+
+async function nextIds(coll, n) {
+  const ref = db.collection("meta").doc("counters");
+  return db.runTransaction(async tx => {
+    const snap = await tx.get(ref);
+    const data = snap.exists ? (snap.data() || {}) : {};
+    const cur = (data[coll] || 1);
+    const ids = [];
+    for (let i = 0; i < n; i++) ids.push(cur + i);
+    data[coll] = cur + n;
+    tx.set(ref, data, { merge: true });
+    return ids;
+  });
+}
+async function nextId(coll) { return (await nextIds(coll, 1))[0]; }
+function setDoc(coll, id, data) { return colRef(coll).doc(String(id)).set(data); }
+function delDoc(coll, id) { return colRef(coll).doc(String(id)).delete(); }
+async function batchWrite(ops) { // ops: [{type:'set'|'delete', coll, id, data}]
+  for (let i = 0; i < ops.length; i += 400) {
+    const batch = db.batch();
+    ops.slice(i, i + 400).forEach(op => {
+      const ref = op.coll === "months" ? db.collection("months").doc(String(op.id))
+                                       : colRef(op.coll).doc(String(op.id));
+      if (op.type === "set") batch.set(ref, op.data); else batch.delete(ref);
+    });
+    await batch.commit();
+  }
+}
+
+/* ---------------- derived data (mirrors check_seed.py) ---------------- */
+function groupById(id) { return S.groups.find(g => g.id === id); }
+function itemById(id) { return S.items.find(i => i.id === id); }
+function lineById(id) { return S.monthLines.find(l => l.id === id); }
+function accountById(id) { return S.accounts.find(a => a.id === id); }
+function isIncomeItem(itemId) {
+  const it = itemById(itemId);
+  const g = it && groupById(it.groupId);
+  return !!(g && g.isIncome);
+}
+function monthsSorted() { return Object.keys(S.months).sort(); }
+function lineOf(month, itemId) { return S.monthLines.find(l => l.month === month && l.itemId === itemId); }
+function flowByLine() {
+  const m = new Map();
+  S.splits.forEach(s => m.set(s.monthLineId, (m.get(s.monthLineId) || 0) + s.amountCents));
+  return m;
+}
+function movesNet(itemId, month) {
+  let n = 0;
+  S.budgetMoves.forEach(mv => {
+    if (mv.month !== month) return;
+    if (mv.fromItemId === itemId) n -= mv.amountCents;
+    if (mv.toItemId === itemId) n += mv.amountCents;
+  });
+  return n;
+}
+function rolledOpening(itemId, month, flows) {
+  let total = (itemById(itemId) || {}).openingBalanceCents || 0;
+  for (const m of monthsSorted()) {
+    if (m >= month) break;
+    const l = lineOf(m, itemId);
+    if (!l) continue;
+    total += l.plannedCents + (flows.get(l.id) || 0) + movesNet(itemId, m);
+  }
+  return total;
+}
+function lineAvailable(line, flows) {
+  const f = flows.get(line.id) || 0;
+  if (isIncomeItem(line.itemId)) return line.plannedCents - f;
+  return rolledOpening(line.itemId, line.month, flows) + line.plannedCents + f + movesNet(line.itemId, line.month);
+}
+function monthTotals(month, flows) {
+  let incPlanned = 0, outPlanned = 0, received = 0, spent = 0;
+  S.monthLines.filter(l => l.month === month).forEach(l => {
+    const f = flows.get(l.id) || 0;
+    if (isIncomeItem(l.itemId)) { incPlanned += l.plannedCents; received += f; }
+    else { outPlanned += l.plannedCents; spent += -f; }
+  });
+  return { incPlanned, outPlanned, received, spent, ltb: incPlanned - outPlanned };
+}
+function accountBalance(acctId) {
+  const a = accountById(acctId);
+  if (!a) return 0;
+  return a.openingBalanceCents + S.transactions.filter(t => t.accountId === acctId)
+    .reduce((s, t) => s + t.amountCents, 0);
+}
+function accountCleared(acctId) {
+  const a = accountById(acctId);
+  if (!a) return 0;
+  return a.openingBalanceCents + S.transactions.filter(t => t.accountId === acctId && t.cleared)
+    .reduce((s, t) => s + t.amountCents, 0);
+}
+function accountsTotal() { return S.accounts.filter(a => !a.archived).reduce((s, a) => s + accountBalance(a.id), 0); }
+function carriedInto(month, flows) {
+  return S.items.filter(i => !isIncomeItem(i.id)).reduce((s, i) => s + rolledOpening(i.id, month, flows), 0);
+}
+function balanceCheck(month, flows) {
+  const t = monthTotals(month, flows);
+  const carried = carriedInto(month, flows);
+  const budgetLayer = carried + t.received - t.spent;
+  const acctTotal = accountsTotal();
+  return {
+    carried, received: t.received, spent: t.spent,
+    remainingToSpend: t.outPlanned - t.spent,
+    budgetLayer, accountsTotal: acctTotal,
+    difference: acctTotal - budgetLayer,
+    expectedNotYetReceived: Math.max(0, t.incPlanned - t.received),
+  };
+}
+function activeMonth() {
+  const ms = monthsSorted();
+  if (!ms.length) return monthOf(todayStr());
+  const cur = monthOf(todayStr());
+  if (S.months[cur]) return cur;
+  const past = ms.filter(m => m < cur);
+  return past.length ? past[past.length - 1] : ms[0];
+}
+function balancer(flows) {
+  const m = activeMonth();
+  const assigned = S.monthLines.filter(l => l.month === m && !isIncomeItem(l.itemId))
+    .reduce((s, l) => s + lineAvailable(l, flows), 0);
+  const held = accountsTotal();
+  const t = monthTotals(m, flows);
+  const expected = Math.max(0, t.incPlanned - t.received);
+  const gap = assigned - held;
+  const over = Math.max(0, gap - expected);
+  return { month: m, assigned, held, gap, expected, over };
+}
+</script>
+<script>
+"use strict";
+/* ---------------- rendering ---------------- */
+function render() {
+  if (!S.user) return;
+  if (!S.loaded) { $("#main").innerHTML = '<div class="empty">Loading your budget…</div>'; return; }
+  if (!Object.keys(S.months).length) { renderEmptyDatabase(); return; }
+  const flows = flowByLine();
+  renderHeader(flows);
+  const main = $("#main");
+  if (UI.tab === "budget") main.innerHTML = budgetView(flows);
+  else if (UI.tab === "activity") main.innerHTML = activityView();
+  else if (UI.tab === "review") main.innerHTML = reviewView();
+  else if (UI.tab === "accounts") main.innerHTML = accountsView(flows);
+  else if (UI.tab === "more") main.innerHTML = moreView();
+  bindView(flows);
+  $("#fab").classList.toggle("hidden", UI.tab !== "budget" && UI.tab !== "activity");
+}
+function renderEmptyDatabase() {
+  $("#main").innerHTML = `<div class="card">
+    <h3>Welcome</h3>
+    <p>This budget is empty. Import the backup file to load your data:
+    go to <b>More → Import backup</b> and choose the seed backup JSON.</p></div>`;
+  $("#ltb-val").textContent = "$0.00";
+  $("#m-select").innerHTML = "";
+}
+function renderHeader(flows) {
+  const ms = monthsSorted();
+  const sel = $("#m-select");
+  sel.innerHTML = ms.map(m => `<option value="${m}" ${m === UI.month ? "selected" : ""}>${monthLabel(m)}</option>`).join("");
+  const showMonthNav = UI.tab === "budget";
+  $("#monthnav").style.visibility = showMonthNav ? "visible" : "hidden";
+  $("#ltb-box").style.visibility = showMonthNav ? "visible" : "hidden";
+  const t = monthTotals(UI.month, flows);
+  $("#ltb-val").textContent = fmt(t.ltb);
+  const over = $("#overbar");
+  if (showMonthNav && t.ltb < 0) {
+    over.textContent = fmt(-t.ltb) + " over budget";
+    over.classList.remove("hidden");
+  } else over.classList.add("hidden");
+  const cb = $("#closedbar");
+  if (showMonthNav && S.months[UI.month] && S.months[UI.month].closed) {
+    cb.textContent = monthLabel(UI.month) + " is closed — planned amounts are locked.";
+    cb.classList.remove("hidden");
+  } else cb.classList.add("hidden");
+  $("#who-line").textContent = S.user ? S.user.email : "";
+  $$("#tabbar button").forEach(b => b.classList.toggle("active", b.dataset.tab === UI.tab));
+}
+
+function tadPanel(flows) {
+  const bc = balanceCheck(UI.month, flows);
+  const diffCls = bc.difference === 0 ? "pos" : "neg";
+  return `<div class="card">
+    <h3>Total Available Dollars</h3>
+    <div class="kv"><span class="k">In your accounts</span><span class="v">${fmt(bc.accountsTotal)}</span></div>
+    <div class="kv"><span class="k">Budget (actual)</span><span class="v">${fmt(bc.budgetLayer)}</span></div>
+    <div class="kv"><span class="k">Difference</span><span class="v ${diffCls}">${fmt(bc.difference)}</span></div>
+    <div class="kv"><span class="k muted">Expected, not yet received (not counted above)</span>
+      <span class="v muted">${fmt(bc.expectedNotYetReceived)}</span></div>
+  </div>`;
+}
+
+function lineCard(line, flows) {
+  const f = flows.get(line.id) || 0;
+  const income = isIncomeItem(line.itemId);
+  const item = itemById(line.itemId) || {};
+  const spent = income ? f : -f;
+  const remaining = line.plannedCents - spent;
+  const avail = lineAvailable(line, flows);
+  const closed = S.months[line.month] && S.months[line.month].closed;
+  const pct = line.plannedCents > 0 ? Math.min(100, Math.max(0, spent / line.plannedCents * 100)) : 0;
+  const overCls = spent > line.plannedCents && line.plannedCents >= 0 ? "over" : "";
+  let due = "";
+  if (item.dueDay) {
+    const [y, mo] = line.month.split("-").map(Number);
+    const dueDate = new Date(y, mo - 1, Math.min(item.dueDay, 28));
+    const days = Math.round((dueDate - new Date(todayStr() + "T00:00:00")) / 86400000);
+    const soon = line.month === monthOf(todayStr()) && days >= 0 && days <= 7 && remaining > 0;
+    due = `<span class="due ${soon ? "soon" : ""}">Due day ${item.dueDay}${soon ? " — coming up" : ""}</span>`;
+  }
+  const target = item.targetCents ? `<div class="small muted" style="margin-top:4px;">Target ${fmt(item.targetCents)} · ${item.targetCents > 0 ? Math.max(0, Math.min(100, Math.round(avail / item.targetCents * 100))) : 0}% there</div>` : "";
+  return `<div class="line-card">
+    <div class="line-top">
+      <div class="line-name" data-act="item" data-line="${line.id}">${esc(line.itemName)}${due}</div>
+      <button class="star ${item.favorite ? "on" : ""}" data-act="fav" data-item="${line.itemId}" title="Favorite">${item.favorite ? "★" : "☆"}</button>
+      ${income ? "" : `<button class="mvbtn" data-act="move" data-line="${line.id}" title="Move money from this item">⇄</button>`}
+    </div>
+    <div class="line-nums">
+      <div class="cell"><div class="l">Planned</div>
+        ${closed ? `<div class="n">${fmt(line.plannedCents)}</div>`
+                 : `<input class="planned-edit money" data-line="${line.id}" value="${fmtPlain(line.plannedCents)}" inputmode="numeric" aria-label="Planned for ${esc(line.itemName)}">`}
+      </div>
+      <div class="cell"><div class="l">${income ? "Received" : "Spent"}</div><div class="n">${fmt(spent)}</div></div>
+      <div class="cell"><div class="l">Remaining</div><div class="n ${remaining < 0 ? "neg" : ""}">${fmt(remaining)}</div></div>
+      <div class="cell avail"><div class="l">Available</div><div class="n ${avail < 0 ? "neg" : ""}">${fmt(avail)}</div></div>
+    </div>
+    ${target}
+    <div class="progress"><div class="${overCls}" style="width:${pct}%"></div></div>
+  </div>`;
+}
+
+function budgetView(flows) {
+  const month = UI.month;
+  const lines = S.monthLines.filter(l => l.month === month);
+  const byGroup = new Map();
+  lines.forEach(l => { if (!byGroup.has(l.groupId)) byGroup.set(l.groupId, []); byGroup.get(l.groupId).push(l); });
+  const groups = S.groups.slice().sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  const closed = S.months[month] && S.months[month].closed;
+  let h = "";
+  // account boxes
+  h += `<div class="acctrow">` + S.accounts.filter(a => !a.archived)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id).map(a => `
+    <div class="acctbox" data-act="gotoaccounts">
+      <div class="nm">${esc(a.name)}</div>
+      <div class="bl">${fmt(accountBalance(a.id))}</div>
+      <div class="cl">Cleared ${fmt(accountCleared(a.id))}</div>
+    </div>`).join("") + `</div>`;
+  h += tadPanel(flows);
+  // favorites first
+  const favLines = lines.filter(l => (itemById(l.itemId) || {}).favorite);
+  if (favLines.length) {
+    h += `<div class="grouphead"><span class="gn">★ Favorites</span></div>`;
+    h += favLines.map(l => lineCard(l, flows)).join("");
+  }
+  groups.forEach(g => {
+    const gl = (byGroup.get(g.id) || []).slice().sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+    if (!gl.length && closed) return;
+    const tot = gl.reduce((s, l) => s + l.plannedCents, 0);
+    h += `<div class="grouphead"><span class="gn">${esc(g.name)}</span><span class="gt">Planned ${fmt(tot)}</span></div>`;
+    h += gl.map(l => lineCard(l, flows)).join("");
+    if (!closed) h += `<div class="addrow"><button class="btn secondary small" data-act="additem" data-group="${g.id}">+ Add item to ${esc(g.name)}</button></div>`;
+  });
+  if (!closed) h += `<div class="addrow"><button class="btn secondary small" data-act="addgroup">+ Add group</button>
+    <button class="btn secondary small" data-act="nextmonth">Create ${monthLabel(addMonths(monthsSorted()[monthsSorted().length - 1] || month, 1))} →</button></div>`;
+  // month memo + close
+  h += `<div class="card"><h3>Month memo</h3>
+    <textarea id="month-memo" rows="3" style="width:100%;border:1.5px solid var(--line);border-radius:10px;padding:10px;">${esc((S.months[month] || {}).memo || "")}</textarea>
+    <div style="margin-top:8px; display:flex; gap:8px;">
+      <button class="btn small secondary" data-act="savememo">Save memo</button>
+      ${closed ? `<button class="btn small secondary" data-act="reopenmonth">Reopen month</button>`
+               : `<button class="btn small secondary" data-act="closemonth">Month Close…</button>`}
+    </div></div>`;
+  return h;
+}
+</script>
+<script>
+"use strict";
+/* ---------------- activity ---------------- */
+function txnItemLabel(t) {
+  const sp = S.splits.filter(s => s.transactionId === t.id);
+  if (!sp.length) return t.kind === "transfer" ? "Account transfer" : "Account only";
+  return sp.map(s => { const l = lineById(s.monthLineId); return l ? l.itemName : "?"; }).join(" · ");
+}
+function activityView() {
+  const q = UI.activityQuery.toLowerCase();
+  let txns = S.transactions.slice().sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+  if (q) txns = txns.filter(t => (t.merchant + " " + (t.note || "") + " " + txnItemLabel(t)).toLowerCase().includes(q));
+  let h = `<input class="searchbar" id="activity-search" type="search" placeholder="Search merchant, note, or budget item…" value="${esc(UI.activityQuery)}">`;
+  if (!txns.length) h += `<div class="empty">No transactions found.</div>`;
+  h += txns.slice(0, 400).map(t => {
+    const a = accountById(t.accountId);
+    return `<div class="txnrow" data-act="edittxn" data-txn="${t.id}">
+      <button class="clr ${t.cleared ? "on" : ""}" data-act="togglecleared" data-txn="${t.id}" title="Cleared">${t.cleared ? "✓" : ""}</button>
+      <div class="main">
+        <div class="merch">${esc(t.merchant)}</div>
+        <div class="meta">${t.date} · ${esc(a ? a.name : "?")} · ${esc(txnItemLabel(t))}${t.note ? " · " + esc(t.note) : ""}${t.receiptBlobKey ? " · 📎 receipt" : ""}</div>
+      </div>
+      <div class="amt ${t.amountCents < 0 ? "neg" : "pos"}">${fmt(t.amountCents)}</div>
+    </div>`;
+  }).join("");
+  const moves = S.budgetMoves.slice().sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+  if (moves.length) {
+    h += `<div class="grouphead"><span class="gn">Budget moves</span></div>`;
+    h += moves.map(mv => {
+      const from = itemById(mv.fromItemId), to = itemById(mv.toItemId);
+      return `<div class="txnrow"><div class="main">
+        <div class="merch">⇄ ${esc(from ? from.name : "?")} → ${esc(to ? to.name : "?")}</div>
+        <div class="meta">${mv.date} · ${monthLabel(mv.month)}${mv.note ? " · " + esc(mv.note) : ""}</div></div>
+        <div class="amt">${fmt(mv.amountCents)}</div></div>`;
+    }).join("");
+  }
+  return h;
+}
+
+/* ---------------- review (statement import) ---------------- */
+function merchantKey(desc) {
+  const STOP = new Set(["pos", "web", "ppd", "ach", "purchase", "payments", "the", "co", "inc", "llc", "com", "www", "us", "usa"]);
+  const toks = String(desc || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/)
+    .filter(t => t && !/^\d+$/.test(t) && !STOP.has(t));
+  return toks.slice(0, 3).join(" ");
+}
+function guessItemFor(desc) {
+  const toks = new Set(String(desc || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter(Boolean));
+  for (const m of S.merchantMappings) {
+    const keyToks = String(m.merchantKey || "").toLowerCase().split(/\s+/).filter(Boolean);
+    if (keyToks.length && keyToks.every(t => toks.has(t))) {
+      const it = itemById(m.itemId);
+      if (it) return it;
+    }
+  }
+  return null;
+}
+function isDuplicateRow(date, amountCents, desc) {
+  const key = merchantKey(desc);
+  return S.transactions.some(t => {
+    if (t.date !== date || t.amountCents !== amountCents) return false;
+    const tk = merchantKey(t.merchant);
+    return tk === key || (tk && key && (tk.includes(key) || key.includes(tk)));
+  }) || S.statementRows.some(r => r.date === date && r.amountCents === amountCents &&
+       merchantKey(r.description) === key && r.status !== "skipped");
+}
+function reviewView() {
+  let h = `<div class="card"><h3>Import a bank statement (CSV)</h3>
+    <p class="small muted">Export a CSV from your bank and pick it here. New rows are checked against
+    transactions already tracked — duplicates are flagged automatically — and each new row gets a
+    guessed budget item from what's been learned from past imports.</p>
+    <div class="field"><label>Statement account</label>
+      <select id="imp-account">${S.accounts.filter(a => !a.archived).map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join("")}</select></div>
+    <input type="file" id="imp-file" accept=".csv,text/csv" class="hidden">
+    <button class="btn" id="imp-pick">Choose CSV file…</button></div>`;
+  const imps = S.statementImports.slice().sort((a, b) => b.id - a.id);
+  if (UI.reviewImportId && !imps.some(i => i.id === UI.reviewImportId)) UI.reviewImportId = imps.length ? imps[0].id : null;
+  if (!UI.reviewImportId && imps.length) UI.reviewImportId = imps[0].id;
+  if (imps.length) {
+    h += `<div class="field"><label>Import</label><select id="imp-select">` +
+      imps.map(i => `<option value="${i.id}" ${i.id === UI.reviewImportId ? "selected" : ""}>${esc(i.sourceName)} — ${i.totalRows} rows, ${i.newRows} new, ${i.duplicateRows} duplicates</option>`).join("") +
+      `</select></div>`;
+    const rows = S.statementRows.filter(r => r.importId === UI.reviewImportId)
+      .sort((a, b) => (a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1) || a.date.localeCompare(b.date) || a.id - b.id);
+    const pending = rows.filter(r => r.status === "pending");
+    if (pending.length) h += `<div style="margin-bottom:10px;"><button class="btn small" data-act="confirmall">Confirm all ${pending.length} pending with their items</button></div>`;
+    h += rows.map(r => {
+      const guess = r.guessedItemId ? itemById(r.guessedItemId) : guessItemFor(r.description);
+      const selItem = guess ? guess.id : null;
+      const pill = r.status === "confirmed" ? `<span class="pill green">confirmed</span>`
+        : r.status === "skipped" ? `<span class="pill gray">skipped</span>`
+        : r.status === "duplicate" ? `<span class="pill red">duplicate</span>` : `<span class="pill">pending</span>`;
+      let controls = "";
+      if (r.status === "pending") {
+        const pickMonth = S.monthLines.some(l => l.month === monthOf(r.date)) ? monthOf(r.date) : activeMonth();
+        controls = `<div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
+          <select id="row-item-${r.id}" style="flex:1; min-width:170px; padding:8px; border:1.5px solid var(--line); border-radius:9px;">${itemOptionsGrouped(pickMonth, selItem)}</select>
+          <button class="btn small" data-act="confirmrow" data-row="${r.id}">Confirm</button>
+          <button class="btn small secondary" data-act="splitrow" data-row="${r.id}">Split…</button>
+          <button class="btn small secondary" data-act="skiprow" data-row="${r.id}">Skip</button></div>`;
+      }
+      return `<div class="line-card"><div class="line-top">
+        <div class="main" style="flex:1;"><div style="font-weight:700;">${esc(r.description)}</div>
+        <div class="meta small muted">${r.date} · ${pill}${guess && r.status === "pending" ? ` · guessed: ${esc(guess.name)}` : ""}</div></div>
+        <div class="amt ${r.amountCents < 0 ? "neg" : "pos"}">${fmt(r.amountCents)}</div></div>${controls}</div>`;
+    }).join("");
+  }
+  return h;
+}
+function itemOptionsGrouped(month, selectedItemId) {
+  const groups = S.groups.slice().sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  return groups.map(g => {
+    const lines = S.monthLines.filter(l => l.month === month && l.groupId === g.id)
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+    if (!lines.length) return "";
+    return `<optgroup label="${esc(g.name)}">` + lines.map(l =>
+      `<option value="${l.itemId}" ${l.itemId === selectedItemId ? "selected" : ""}>${esc(l.itemName)}</option>`).join("") + `</optgroup>`;
+  }).join("");
+}
+
+/* ---------------- accounts ---------------- */
+function balancerPanel(flows) {
+  const b = balancer(flows);
+  let third;
+  if (b.over > 0) third = `<div class="kv"><span class="k">Over budget</span><span class="v neg">${fmt(b.over)}</span></div>
+    <div class="small" style="color:var(--red); font-weight:600;">Expected income won't cover the assignments — this same amount shows at the top of the Budget view.</div>`;
+  else if (b.gap > 0) third = `<div class="kv"><span class="k">Yet to receive</span><span class="v">${fmt(b.gap)}</span></div>
+    <div class="small muted">This month's planned income that hasn't arrived yet — it backs these assignments as paychecks land.</div>`;
+  else if (b.gap < 0) third = `<div class="kv"><span class="k">Not yet assigned</span><span class="v">${fmt(-b.gap)}</span></div>
+    <div class="small muted">Money in accounts beyond what this month assigns.</div>`;
+  else third = `<div class="kv"><span class="k">Yet to receive</span><span class="v">${fmt(0)}</span></div>`;
+  return `<div class="card"><h3>Account Balancer — ${monthLabel(b.month)} (active month)</h3>
+    <div class="kv"><span class="k">Assigned (budget items)</span><span class="v">${fmt(b.assigned)}</span></div>
+    <div class="kv"><span class="k">Held (accounts)</span><span class="v">${fmt(b.held)}</span></div>
+    ${third}</div>`;
+}
+function accountsView(flows) {
+  const bc = balanceCheck(activeMonth(), flows);
+  let h = "";
+  h += S.accounts.filter(a => !a.archived).sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id).map(a => `
+    <div class="card">
+      <h3>${esc(a.name)}</h3>
+      <div class="kv"><span class="k">Balance</span><span class="v">${fmt(accountBalance(a.id))}</span></div>
+      <div class="kv"><span class="k">Cleared</span><span class="v">${fmt(accountCleared(a.id))}</span></div>
+      <div class="kv"><span class="k">Reconciled through</span><span class="v">${a.reconciledThrough || "—"}</span></div>
+      <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+        <button class="btn small secondary" data-act="setbalance" data-acct="${a.id}">Set balance</button>
+        <button class="btn small secondary" data-act="reconcile" data-acct="${a.id}">Reconcile…</button>
+      </div>
+    </div>`).join("");
+  h += `<div class="addrow"><button class="btn secondary small" data-act="addaccount">+ Add account</button>
+    <button class="btn secondary small" data-act="transfer">Transfer between accounts…</button></div>`;
+  h += tadPanelFor(activeMonth(), flows);
+  h += `<div class="card"><h3>Balance check — detail (${monthLabel(activeMonth())})</h3>
+    <div class="kv"><span class="k">Carried balances (rolled into month)</span><span class="v">${fmt(bc.carried)}</span></div>
+    <div class="kv"><span class="k">+ Income received</span><span class="v">${fmt(bc.received)}</span></div>
+    <div class="kv"><span class="k">− Spent</span><span class="v">${fmt(bc.spent)}</span></div>
+    <div class="kv"><span class="k">Budget (actual)</span><span class="v">${fmt(bc.budgetLayer)}</span></div>
+    <div class="kv"><span class="k">Accounts total</span><span class="v">${fmt(bc.accountsTotal)}</span></div>
+    <div class="kv"><span class="k">Difference</span><span class="v ${bc.difference === 0 ? "pos" : "neg"}">${fmt(bc.difference)}</span></div>
+    <div class="kv"><span class="k">Remaining to spend (planned − spent)</span><span class="v">${fmt(bc.remainingToSpend)}</span></div>
+    <div class="kv"><span class="k muted">Expected, not yet received (not counted)</span><span class="v muted">${fmt(bc.expectedNotYetReceived)}</span></div>
+  </div>`;
+  h += balancerPanel(flows);
+  return h;
+}
+function tadPanelFor(month, flows) {
+  const bc = balanceCheck(month, flows);
+  return `<div class="card"><h3>Total Available Dollars</h3>
+    <div class="kv"><span class="k">In your accounts</span><span class="v">${fmt(bc.accountsTotal)}</span></div>
+    <div class="kv"><span class="k">Budget (actual)</span><span class="v">${fmt(bc.budgetLayer)}</span></div>
+    <div class="kv"><span class="k">Difference</span><span class="v ${bc.difference === 0 ? "pos" : "neg"}">${fmt(bc.difference)}</span></div>
+  </div>`;
+}
+
+/* ---------------- more ---------------- */
+function moreView() {
+  return `
+  <div class="card"><h3>Recurring transactions</h3>
+    <div id="recurring-list">${recurringListHtml()}</div>
+    <div class="addrow"><button class="btn secondary small" data-act="addrecurring">+ Add recurring</button>
+    <button class="btn secondary small" data-act="postdue">Post all due</button></div>
+  </div>
+  <div class="card"><h3>Backup</h3>
+    <p class="small muted">Download a full JSON backup (same format as the original seed file), or restore one.
+    Restoring replaces everything in the shared budget with the backup's contents.</p>
+    <div class="addrow"><button class="btn secondary small" data-act="exportbackup">Download backup JSON</button>
+    <button class="btn secondary small" data-act="importbackup">Import backup…</button></div>
+    <input type="file" id="backup-file" accept=".json,application/json" class="hidden">
+  </div>
+  <div class="card"><h3>Export</h3>
+    <div class="addrow"><button class="btn secondary small" data-act="exporttxns">Transactions CSV</button>
+    <button class="btn secondary small" data-act="exportbudget">Budget CSV (viewed month)</button></div>
+    <div class="addrow"><button class="btn secondary small" data-act="print">Print budget</button></div>
+  </div>
+  <div class="card"><h3>Account</h3>
+    <p class="small muted">Signed in as ${esc(S.user ? S.user.email : "")}. Access is limited to the two invited accounts.</p>
+    <button class="btn secondary" data-act="signout">Sign out</button>
+  </div>`;
+}
+function recurringListHtml() {
+  if (!S.recurring.length) return `<div class="empty">No recurring transactions yet.</div>`;
+  return S.recurring.slice().sort((a, b) => (a.nextDate || "").localeCompare(b.nextDate || "")).map(r => {
+    const it = itemById(r.itemId), a = accountById(r.accountId);
+    return `<div class="txnrow"><div class="main">
+      <div class="merch">${esc(r.merchant)}</div>
+      <div class="meta">${esc(r.frequency)} · next ${esc(r.nextDate || "—")} · ${esc(a ? a.name : "?")} · ${esc(it ? it.name : "?")}${r.active === false ? " · paused" : ""}</div></div>
+      <div class="amt ${r.amountCents < 0 ? "neg" : "pos"}">${fmt(r.amountCents)}</div>
+      <button class="btn small secondary" data-act="postrecurring" data-id="${r.id}">Post now</button>
+      <button class="btn small secondary" data-act="delrecurring" data-id="${r.id}">✕</button></div>`;
+  }).join("");
+}
+</script>
+<script>
+"use strict";
+/* ---------------- modal ---------------- */
+function openModal(html) {
+  $("#modal-root").innerHTML = `<div class="modal-bg" id="modal-bg"><div class="modal">${html}</div></div>`;
+  $("#modal-bg").addEventListener("click", e => { if (e.target.id === "modal-bg") closeModal(); });
+}
+function closeModal() { $("#modal-root").innerHTML = ""; }
+function modalActions(saveLabel, extra) {
+  return `<div class="actions">${extra || ""}<button class="btn secondary" data-close>Cancel</button>
+    <button class="btn" data-save>${esc(saveLabel || "Save")}</button></div>`;
+}
+function bindModalClose() {
+  $$("#modal-root [data-close]").forEach(b => b.addEventListener("click", closeModal));
+}
+function fieldHtml(label, inner, hint) {
+  return `<div class="field"><label>${esc(label)}</label>${inner}${hint ? `<div class="hint">${esc(hint)}</div>` : ""}</div>`;
+}
+
+/* ---------------- months: create / copy-forward ---------------- */
+async function ensureMonth(month, silent) {
+  if (S.months[month]) return true;
+  const ms = monthsSorted();
+  const earlier = ms.filter(m => m < month);
+  const source = earlier.length ? earlier[earlier.length - 1] : (ms.find(m => m > month) || null);
+  if (!source) { if (!silent) toast("No month to copy from yet."); return false; }
+  if (!silent && !confirm(`Create ${monthLabel(month)} by copying ${monthLabel(source)}?`)) return false;
+  const srcLines = S.monthLines.filter(l => l.month === source)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  const ids = await nextIds("monthLines", srcLines.length);
+  const ops = [{ type: "set", coll: "months", id: month, data: { month, closed: false, memo: "" } }];
+  srcLines.forEach((l, i) => {
+    const item = itemById(l.itemId);
+    const planned = item && item.recurringPlannedCents != null ? item.recurringPlannedCents : l.plannedCents;
+    ops.push({ type: "set", coll: "monthLines", id: ids[i], data: {
+      id: ids[i], month, itemId: l.itemId, groupId: l.groupId,
+      itemName: item ? item.name : l.itemName, groupName: l.groupName,
+      plannedCents: planned, sortOrder: l.sortOrder } });
+  });
+  await batchWrite(ops);
+  toast(monthLabel(month) + " created");
+  return true;
+}
+
+/* ---------------- transaction form ---------------- */
+let txnFormState = null; // {txnId|null, splits:[{lineId, cents}], statementRowId|null, accountId}
+function openTxnForm(opts) {
+  opts = opts || {};
+  const t = opts.txn || null;
+  const date = (t && t.date) || opts.date || todayStr();
+  const month = monthOf(date);
+  txnFormState = {
+    txnId: t ? t.id : null,
+    statementRowId: opts.statementRowId || null,
+    prefillDesc: opts.description || "",
+  };
+  const existingSplits = t ? S.splits.filter(s => s.transactionId === t.id) : [];
+  const initSplits = existingSplits.length ? existingSplits.map(s => ({ lineId: s.monthLineId, cents: Math.abs(s.amountCents) }))
+    : (opts.itemId && lineOf(month, opts.itemId) ? [{ lineId: lineOf(month, opts.itemId).id, cents: Math.abs(opts.amountCents || 0) }]
+    : [{ lineId: null, cents: Math.abs((t && t.amountCents) || opts.amountCents || 0) }]);
+  const dirOut = t ? t.amountCents < 0 : (opts.amountCents == null ? true : opts.amountCents < 0);
+  openModal(`<h2>${t ? "Edit transaction" : "Add transaction"}</h2>
+    <div class="seg" id="txn-dir">
+      <button data-dir="out" class="${dirOut ? "on" : ""}">Money out</button>
+      <button data-dir="in" class="${!dirOut ? "on" : ""}">Money in</button>
+    </div>
+    ${fieldHtml("Date", `<input type="date" id="tf-date" value="${date}">`)}
+    ${fieldHtml("Merchant / description", `<input type="text" id="tf-merch" value="${esc(t ? t.merchant : (opts.description || ""))}" placeholder="e.g. Market Basket">`)}
+    ${fieldHtml("Amount", `<input type="text" id="tf-amount" inputmode="numeric" value="">`)}
+    ${fieldHtml("Account", `<select id="tf-account">${S.accounts.filter(a => !a.archived).map(a =>
+      `<option value="${a.id}" ${t && t.accountId === a.id ? "selected" : (opts.accountId === a.id ? "selected" : "")}>${esc(a.name)}</option>`).join("")}</select>`)}
+    <div class="field"><label>Budget item(s)</label><div id="tf-splits"></div>
+      <div class="hint" id="tf-split-sum"></div>
+      <button class="btn small secondary" id="tf-addsplit" type="button">+ Split across items</button></div>
+    ${fieldHtml("Note", `<input type="text" id="tf-note" value="${esc(t ? (t.note || "") : "")}">`)}
+    <div class="field"><label><input type="checkbox" id="tf-cleared" ${t && t.cleared ? "checked" : ""} style="width:auto;"> Cleared</label></div>
+    <div class="field"><label>Receipt photo</label>
+      <input type="file" id="tf-receipt" accept="image/*">
+      <div class="hint">${t && t.receiptBlobKey ? "A receipt is attached — uploading a new one replaces it." : "Optional. Stored privately; only the two invited accounts can open it."}</div></div>
+    ${t ? `<button class="btn danger" id="tf-delete" type="button">Delete transaction</button>` : ""}
+    ${modalActions(t ? "Save changes" : "Add transaction")}`);
+  bindModalClose();
+  const amtInput = attachMoneyInput($("#tf-amount"), Math.abs(t ? t.amountCents : (opts.amountCents || 0)));
+  txnFormState.amountInput = amtInput;
+  txnFormState.dir = dirOut ? "out" : "in";
+  $$("#txn-dir button").forEach(b => b.addEventListener("click", () => {
+    txnFormState.dir = b.dataset.dir;
+    $$("#txn-dir button").forEach(x => x.classList.toggle("on", x === b));
+  }));
+  const splitsRoot = $("#tf-splits");
+  function drawSplits() {
+    splitsRoot.innerHTML = txnFormState.splitRows.map((r, i) => `
+      <div class="splitrow">
+        <select data-split-item="${i}">${lineOptionsGrouped(monthOf($("#tf-date").value), r.lineId)}</select>
+        <input type="text" data-split-amt="${i}" inputmode="numeric">
+        ${txnFormState.splitRows.length > 1 ? `<button class="btn small secondary rm" data-split-rm="${i}" type="button">✕</button>` : ""}
+      </div>`).join("");
+    txnFormState.splitRows.forEach((r, i) => {
+      const inp = attachMoneyInput($(`[data-split-amt="${i}"]`, splitsRoot), r.cents);
+      r.input = inp;
+      const selEl = $(`[data-split-item="${i}"]`, splitsRoot);
+      if (r.lineId == null && selEl.value) r.lineId = Number(selEl.value); // sync displayed default
+      selEl.addEventListener("change", e => { r.lineId = Number(e.target.value); });
+      inp.addEventListener("keydown", () => setTimeout(updateSplitSum, 0));
+      inp.addEventListener("paste", () => setTimeout(updateSplitSum, 0));
+    });
+    $$("[data-split-rm]", splitsRoot).forEach(b => b.addEventListener("click", () => {
+      syncSplitRowValues();
+      txnFormState.splitRows.splice(Number(b.dataset.splitRm), 1);
+      drawSplits(); updateSplitSum();
+    }));
+    updateSplitSum();
+  }
+  function syncSplitRowValues() {
+    txnFormState.splitRows.forEach(r => { if (r.input) r.cents = r.input.getCents(); });
+  }
+  function updateSplitSum() {
+    syncSplitRowValues();
+    const total = amtInput.getCents();
+    const sum = txnFormState.splitRows.reduce((s, r) => s + r.cents, 0);
+    const el = $("#tf-split-sum");
+    if (txnFormState.splitRows.length <= 1) { el.textContent = ""; return; }
+    el.textContent = sum === total ? `Splits add up: ${fmt(sum)} ✓`
+      : `Splits: ${fmt(sum)} of ${fmt(total)} — ${fmt(Math.abs(total - sum))} ${sum < total ? "unassigned" : "over"}`;
+    el.style.color = sum === total ? "var(--green-d)" : "var(--red)";
+  }
+  txnFormState.splitRows = initSplits.map(s => ({ lineId: s.lineId, cents: s.cents, input: null }));
+  drawSplits();
+  amtInput.addEventListener("keydown", () => setTimeout(updateSplitSum, 0));
+  $("#tf-date").addEventListener("change", () => { // re-point pickers at the new month
+    syncSplitRowValues();
+    drawSplits();
+  });
+  $("#tf-addsplit").addEventListener("click", () => {
+    syncSplitRowValues();
+    const total = amtInput.getCents();
+    const sum = txnFormState.splitRows.reduce((s, r) => s + r.cents, 0);
+    txnFormState.splitRows.push({ lineId: null, cents: Math.max(0, total - sum), input: null });
+    drawSplits();
+  });
+  const delBtn = $("#tf-delete");
+  if (delBtn) delBtn.addEventListener("click", async () => {
+    if (!confirm("Delete this transaction? Its budget splits go with it.")) return;
+    const ops = S.splits.filter(s => s.transactionId === t.id)
+      .map(s => ({ type: "delete", coll: "splits", id: s.id }));
+    ops.push({ type: "delete", coll: "transactions", id: t.id });
+    await batchWrite(ops);
+    closeModal(); toast("Transaction deleted");
+  });
+  $("[data-save]", $("#modal-root")).addEventListener("click", () => saveTxnForm());
+}
+function lineOptionsGrouped(month, selectedLineId) {
+  const groups = S.groups.slice().sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  return groups.map(g => {
+    const lines = S.monthLines.filter(l => l.month === month && l.groupId === g.id)
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+    if (!lines.length) return "";
+    return `<optgroup label="${esc(g.name)}">` + lines.map(l =>
+      `<option value="${l.id}" ${l.id === selectedLineId ? "selected" : ""}>${esc(l.itemName)}</option>`).join("") + `</optgroup>`;
+  }).join("");
+}
+async function saveTxnForm() {
+  const st = txnFormState;
+  const date = $("#tf-date").value;
+  if (!date) { toast("Pick a date"); return; }
+  const month = monthOf(date);
+  if (!S.months[month]) { if (!(await ensureMonth(month))) return; }
+  const merchant = $("#tf-merch").value.trim() || "(no description)";
+  const totalAbs = st.amountInput.getCents();
+  if (totalAbs <= 0) { toast("Enter an amount"); return; }
+  const sign = st.dir === "out" ? -1 : 1;
+  // resolve split rows → line ids in the transaction's month
+  st.splitRows.forEach(r => { if (r.input) r.cents = r.input.getCents(); });
+  let rows = st.splitRows.filter(r => r.cents > 0);
+  if (!rows.length) rows = [{ lineId: st.splitRows[0] && st.splitRows[0].lineId, cents: totalAbs }];
+  // remap each chosen line to the same item's line in the txn month
+  rows = rows.map(r => {
+    const chosen = r.lineId ? lineById(r.lineId) : null;
+    const itemId = chosen ? chosen.itemId : null;
+    const target = itemId ? lineOf(month, itemId) : null;
+    return { lineId: target ? target.id : null, itemId, cents: r.cents };
+  }).filter(r => r.lineId);
+  if (!rows.length) { toast("Pick at least one budget item"); return; }
+  const sum = rows.reduce((s, r) => s + r.cents, 0);
+  if (sum !== totalAbs) { toast(`Splits (${fmt(sum)}) must add up to the amount (${fmt(totalAbs)})`); return; }
+  const accountId = Number($("#tf-account").value);
+  const note = $("#tf-note").value.trim();
+  const cleared = $("#tf-cleared").checked;
+  let txnId = st.txnId;
+  const ops = [];
+  if (txnId) {
+    S.splits.filter(s => s.transactionId === txnId).forEach(s => ops.push({ type: "delete", coll: "splits", id: s.id }));
+  } else {
+    txnId = await nextId("transactions");
+  }
+  const old = st.txnId ? S.transactions.find(t => t.id === txnId) : null;
+  const txn = {
+    id: txnId, date, merchant, note, amountCents: sign * totalAbs, accountId,
+    cleared, kind: old ? old.kind : "standard",
+    transferGroup: old ? old.transferGroup : null,
+    receiptBlobKey: old ? old.receiptBlobKey : null,
+    recurringId: old ? old.recurringId : null,
+    createdAt: old ? old.createdAt : new Date().toISOString(),
+  };
+  ops.push({ type: "set", coll: "transactions", id: txnId, data: txn });
+  const splitIds = await nextIds("splits", rows.length);
+  rows.forEach((r, i) => ops.push({ type: "set", coll: "splits", id: splitIds[i],
+    data: { id: splitIds[i], transactionId: txnId, monthLineId: r.lineId, amountCents: sign * r.cents } }));
+  await batchWrite(ops);
+  // receipt photo (Firebase Storage; fails gracefully if not enabled)
+  const file = $("#tf-receipt").files && $("#tf-receipt").files[0];
+  if (file) {
+    const ok = await uploadReceipt(txnId, file);
+    if (!ok) toast("Saved — but the receipt photo didn't upload (storage may not be enabled yet).");
+  }
+  if (st.statementRowId) {
+    const row = S.statementRows.find(r => r.id === st.statementRowId);
+    if (row) await setDoc("statementRows", row.id, { ...row, status: "confirmed", transactionId: txnId });
+  }
+  closeModal();
+  toast("Transaction saved");
+}
+async function uploadReceipt(txnId, file) {
+  if (!storage) return false;
+  try {
+    const path = `receipts/${txnId}/${file.name}`;
+    await storage.ref(path).put(file);
+    await setDoc("transactions", txnId, { ...S.transactions.find(t => t.id === txnId), receiptBlobKey: path });
+    return true;
+  } catch (e) { console.warn("receipt upload failed", e); return false; }
+}
+
+/* ---------------- move money ---------------- */
+function openMoveForm(fromLineId) {
+  const month = UI.month;
+  const fromLine = fromLineId ? lineById(fromLineId) : null;
+  const nonIncomeItems = S.items.filter(i => !i.archived && !isIncomeItem(i.id))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  openModal(`<h2>Move money between items</h2>
+    <p class="small muted">Moves adjust each item's Available in ${monthLabel(month)} and roll forward.
+    Planned amounts don't change. The move is kept as a permanent dated record.</p>
+    ${fieldHtml("From item", `<select id="mv-from">${nonIncomeItems.map(i =>
+      `<option value="${i.id}" ${fromLine && fromLine.itemId === i.id ? "selected" : ""}>${esc(i.name)}</option>`).join("")}</select>`)}
+    ${fieldHtml("To item", `<select id="mv-to">${nonIncomeItems.map(i =>
+      `<option value="${i.id}">${esc(i.name)}</option>`).join("")}</select>`)}
+    ${fieldHtml("Amount", `<input type="text" id="mv-amount" inputmode="numeric">`)}
+    ${fieldHtml("Date", `<input type="date" id="mv-date" value="${todayStr()}">`)}
+    ${fieldHtml("Note (optional)", `<input type="text" id="mv-note">`)}
+    ${modalActions("Move money")}`);
+  bindModalClose();
+  const amt = attachMoneyInput($("#mv-amount"), 0);
+  $("[data-save]", $("#modal-root")).addEventListener("click", async () => {
+    const fromId = Number($("#mv-from").value), toId = Number($("#mv-to").value);
+    const cents = amt.getCents();
+    if (fromId === toId) { toast("Pick two different items"); return; }
+    if (cents <= 0) { toast("Enter an amount"); return; }
+    const id = await nextId("budgetMoves");
+    await setDoc("budgetMoves", id, {
+      id, date: $("#mv-date").value || todayStr(), month,
+      fromItemId: fromId, toItemId: toId, amountCents: cents,
+      note: $("#mv-note").value.trim(), createdAt: new Date().toISOString(),
+    });
+    closeModal(); toast("Money moved");
+  });
+}
+
+/* ---------------- item detail / edit ---------------- */
+function openItemDetail(lineId) {
+  const line = lineById(lineId);
+  if (!line) return;
+  const item = itemById(line.itemId) || {};
+  const flows = flowByLine();
+  const avail = lineAvailable(line, flows);
+  const history = S.transactions.filter(t => S.splits.some(s => s.transactionId === t.id && s.monthLineId === lineId))
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const moves = S.budgetMoves.filter(mv => mv.month === line.month && (mv.fromItemId === line.itemId || mv.toItemId === line.itemId));
+  openModal(`<h2>${esc(line.itemName)}</h2>
+    <div class="kv"><span class="k">Available (${monthLabel(line.month)})</span><span class="v">${fmt(avail)}</span></div>
+    <div class="kv"><span class="k">Planned</span><span class="v">${fmt(line.plannedCents)}</span></div>
+    ${fieldHtml("Item name", `<input type="text" id="it-name" value="${esc(item.name || line.itemName)}">`,
+      "Renaming updates this item from the current month on — past months keep the name they had.")}
+    ${fieldHtml("Target amount (optional)", `<input type="text" id="it-target" inputmode="numeric">`)}
+    ${fieldHtml("Monthly set-aside for future months (optional)", `<input type="text" id="it-recurring" inputmode="numeric">`,
+      "When a new month is created, this replaces the copied planned amount (e.g. SoundCloud $8.75).")}
+    ${fieldHtml("Due day of month (optional)", `<input type="number" id="it-due" min="1" max="31" value="${item.dueDay || ""}">`)}
+    <div class="field"><label><input type="checkbox" id="it-fav" ${item.favorite ? "checked" : ""} style="width:auto;"> Favorite (pinned to top)</label></div>
+    ${history.length ? `<div class="field"><label>Transactions this month</label>` +
+      history.map(t => `<div class="small" style="padding:3px 0;">${t.date} · ${esc(t.merchant)} · <b>${fmt(t.amountCents)}</b></div>`).join("") + `</div>` : ""}
+    ${moves.length ? `<div class="field"><label>Moves this month</label>` +
+      moves.map(mv => `<div class="small" style="padding:3px 0;">${mv.date} · ⇄ ${fmt(mv.amountCents)} ${mv.fromItemId === line.itemId ? "out to " + esc((itemById(mv.toItemId) || {}).name || "") : "in from " + esc((itemById(mv.fromItemId) || {}).name || "")}</div>`).join("") + `</div>` : ""}
+    <div class="actions">
+      <button class="btn secondary" id="it-addtxn">+ Transaction</button>
+      <button class="btn secondary" id="it-move">⇄ Move</button>
+    </div>
+    <div class="actions">
+      <button class="btn secondary" id="it-archive">${item.archived ? "Unarchive item" : "Archive item"}</button>
+      <button class="btn secondary" data-close>Close</button>
+      <button class="btn" data-save>Save</button>
+    </div>`);
+  bindModalClose();
+  const targetIn = attachMoneyInput($("#it-target"), item.targetCents || 0);
+  const recurIn = attachMoneyInput($("#it-recurring"), item.recurringPlannedCents || 0);
+  $("#it-addtxn").addEventListener("click", () => { closeModal(); openTxnForm({ itemId: line.itemId, date: todayStr() }); });
+  $("#it-move").addEventListener("click", () => { closeModal(); openMoveForm(lineId); });
+  $("#it-archive").addEventListener("click", async () => {
+    await setDoc("items", item.id, { ...item, archived: !item.archived });
+    closeModal(); toast(item.archived ? "Item unarchived" : "Item archived");
+  });
+  $("[data-save]", $("#modal-root")).addEventListener("click", async () => {
+    const newName = $("#it-name").value.trim() || item.name;
+    const ops = [{ type: "set", coll: "items", id: item.id, data: {
+      ...item, name: newName,
+      targetCents: targetIn.getCents() || null,
+      recurringPlannedCents: recurIn.getCents() || null,
+      dueDay: $("#it-due").value ? Math.min(31, Math.max(1, Number($("#it-due").value))) : null,
+      favorite: $("#it-fav").checked,
+    } }];
+    // snapshot rule: rename shows from the active month forward only
+    const act = activeMonth();
+    S.monthLines.filter(l => l.itemId === item.id && l.month >= act && l.itemName !== newName)
+      .forEach(l => ops.push({ type: "set", coll: "monthLines", id: l.id, data: { ...l, itemName: newName } }));
+    await batchWrite(ops);
+    closeModal(); toast("Item saved");
+  });
+}
+</script>
+<script>
+"use strict";
+/* ---------------- CSV parsing (bank statements) ---------------- */
+function parseCSVText(text) {
+  const rows = [];
+  let row = [], field = "", inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
+      else field += c;
+    } else if (c === '"') inQ = true;
+    else if (c === ",") { row.push(field); field = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(field); field = "";
+      if (row.some(f => f.trim() !== "")) rows.push(row);
+      row = [];
+    } else field += c;
+  }
+  row.push(field);
+  if (row.some(f => f.trim() !== "")) rows.push(row);
+  return rows;
+}
+function parseDateCell(s) {
+  s = String(s || "").trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (m) {
+    let y = Number(m[3]); if (y < 100) y += 2000;
+    return `${y}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+  }
+  return null;
+}
+function parseAmountCell(s) {
+  s = String(s || "").trim();
+  if (!s) return null;
+  let neg = false;
+  if (/^\(.*\)$/.test(s)) { neg = true; s = s.slice(1, -1); }
+  s = s.replace(/[$,\s]/g, "");
+  if (s.startsWith("-")) { neg = true; s = s.slice(1); }
+  const v = parseFloat(s);
+  if (isNaN(v)) return null;
+  return Math.round((neg ? -v : v) * 100);
+}
+function csvToStatementRows(text) {
+  const grid = parseCSVText(text);
+  let hi = -1;
+  for (let i = 0; i < Math.min(grid.length, 12); i++) {
+    const names = grid[i].map(h => h.toLowerCase().replace(/[^a-z]/g, ""));
+    if (names.some(n => n.includes("date")) &&
+        names.some(n => n.includes("description") || n.includes("merchant") || n === "name" || n.includes("amount") || n.includes("debit"))) { hi = i; break; }
+  }
+  if (hi < 0) return [];
+  const names = grid[hi].map(h => h.toLowerCase().replace(/[^a-z]/g, ""));
+  const find = (...keys) => names.findIndex(n => keys.some(k => n === k || n.includes(k)));
+  const dI = find("date");
+  const descI = find("description", "merchant", "name", "memo", "payee");
+  const amtI = find("amount");
+  const debI = names.findIndex(n => n.includes("debit") || n.includes("withdrawal"));
+  const credI = names.findIndex(n => n.includes("credit") || n.includes("deposit"));
+  const out = [];
+  for (let i = hi + 1; i < grid.length; i++) {
+    const r = grid[i];
+    const date = dI >= 0 ? parseDateCell(r[dI]) : null;
+    const desc = descI >= 0 ? String(r[descI] || "").replace(/\s+/g, " ").trim() : "";
+    let cents = null;
+    if (debI >= 0 || credI >= 0) {
+      const deb = debI >= 0 ? parseAmountCell(r[debI]) : null;
+      const cred = credI >= 0 ? parseAmountCell(r[credI]) : null;
+      if (cred) cents = Math.abs(cred);
+      else if (deb) cents = -Math.abs(deb);
+    } else if (amtI >= 0) cents = parseAmountCell(r[amtI]);
+    if (!date || !desc || !cents) continue;
+    out.push({ date, description: desc, amountCents: cents });
+  }
+  return out;
+}
+
+/* ---------------- statement import & confirm ---------------- */
+async function handleStatementFile(file, accountId) {
+  const text = await file.text();
+  const parsed = csvToStatementRows(text);
+  if (!parsed.length) { toast("No statement rows found in that CSV — check the file format."); return; }
+  const impId = await nextId("statementImports");
+  const rowIds = await nextIds("statementRows", parsed.length);
+  const seen = new Set();
+  let newCount = 0, dupCount = 0;
+  const ops = [];
+  parsed.forEach((r, i) => {
+    const key = r.date + "|" + r.amountCents + "|" + merchantKey(r.description);
+    let status = "pending";
+    if (seen.has(key) || isDuplicateRow(r.date, r.amountCents, r.description)) { status = "duplicate"; dupCount++; }
+    else newCount++;
+    seen.add(key);
+    const guess = guessItemFor(r.description);
+    ops.push({ type: "set", coll: "statementRows", id: rowIds[i], data: {
+      id: rowIds[i], importId: impId, date: r.date, description: r.description,
+      amountCents: r.amountCents,
+      guessedItemId: guess ? guess.id : null, guessedItemName: guess ? guess.name : null,
+      status, transactionId: null } });
+  });
+  ops.unshift({ type: "set", coll: "statementImports", id: impId, data: {
+    id: impId, sourceName: file.name, importedAt: new Date().toISOString(),
+    totalRows: parsed.length, newRows: newCount, duplicateRows: dupCount, accountId } });
+  await batchWrite(ops);
+  UI.reviewImportId = impId;
+  UI.tab = "review";
+  toast(`Imported ${parsed.length} rows — ${newCount} new, ${dupCount} duplicates`);
+  render();
+}
+async function learnMapping(desc, itemId, ops) {
+  const key = merchantKey(desc);
+  if (!key) return;
+  const existing = S.merchantMappings.find(m => m.merchantKey === key);
+  if (existing) {
+    if (existing.itemId !== itemId) ops.push({ type: "set", coll: "merchantMappings", id: existing.id, data: { ...existing, itemId } });
+  } else {
+    const id = await nextId("merchantMappings");
+    ops.push({ type: "set", coll: "merchantMappings", id, data: { id, merchantKey: key, itemId } });
+  }
+}
+async function confirmStatementRow(row, itemId) {
+  const month = monthOf(row.date);
+  if (!S.months[month] && !(await ensureMonth(month, true))) { toast("Couldn't create " + monthLabel(month)); return false; }
+  const line = lineOf(month, itemId);
+  if (!line) { toast("That item has no line in " + monthLabel(month)); return false; }
+  const imp = S.statementImports.find(i => i.id === row.importId);
+  const accountId = (imp && imp.accountId) || (S.accounts.find(a => !a.archived) || {}).id;
+  const txnId = await nextId("transactions");
+  const splitId = await nextId("splits");
+  const ops = [
+    { type: "set", coll: "transactions", id: txnId, data: {
+      id: txnId, date: row.date, merchant: row.description, note: "",
+      amountCents: row.amountCents, accountId, cleared: true, kind: "standard",
+      transferGroup: null, receiptBlobKey: null, recurringId: null,
+      createdAt: new Date().toISOString() } },
+    { type: "set", coll: "splits", id: splitId, data: {
+      id: splitId, transactionId: txnId, monthLineId: line.id, amountCents: row.amountCents } },
+    { type: "set", coll: "statementRows", id: row.id, data: { ...row, status: "confirmed", transactionId: txnId } },
+  ];
+  await learnMapping(row.description, itemId, ops);
+  await batchWrite(ops);
+  return true;
+}
+
+/* ---------------- view binding & actions ---------------- */
+function bindView(flows) {
+  $$(".planned-edit").forEach(inp => {
+    const line = lineById(Number(inp.dataset.line));
+    if (!line) return;
+    const mi = attachMoneyInput(inp, line.plannedCents);
+    inp.addEventListener("blur", async () => {
+      const v = mi.getCents();
+      if (v !== line.plannedCents) await setDoc("monthLines", line.id, { ...line, plannedCents: v });
+    });
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") inp.blur(); });
+  });
+  $$("#main [data-act]").forEach(el => el.addEventListener("click", e => handleAct(el, e)));
+  const sb = $("#activity-search");
+  if (sb) sb.addEventListener("input", () => {
+    UI.activityQuery = sb.value;
+    render();
+    const n = $("#activity-search");
+    if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); }
+  });
+  const pick = $("#imp-pick");
+  if (pick) pick.addEventListener("click", () => $("#imp-file").click());
+  const file = $("#imp-file");
+  if (file) file.addEventListener("change", async () => {
+    if (file.files[0]) await handleStatementFile(file.files[0], Number($("#imp-account").value));
+  });
+  const isel = $("#imp-select");
+  if (isel) isel.addEventListener("change", () => { UI.reviewImportId = Number(isel.value); render(); });
+  const bf = $("#backup-file");
+  if (bf) bf.addEventListener("change", async () => { if (bf.files[0]) await handleBackupFile(bf.files[0]); });
+  const impBtn = $("[data-act='importbackup']");
+  if (impBtn) impBtn.addEventListener("click", () => { const f = $("#backup-file"); if (f) f.click(); });
+}
+
+async function handleAct(el, e) {
+  const act = el.dataset.act;
+  const flows = flowByLine();
+  switch (act) {
+    case "fav": {
+      const item = itemById(Number(el.dataset.item));
+      if (item) await setDoc("items", item.id, { ...item, favorite: !item.favorite });
+      break;
+    }
+    case "item": openItemDetail(Number(el.dataset.line)); break;
+    case "move": openMoveForm(Number(el.dataset.line)); break;
+    case "gotoaccounts": UI.tab = "accounts"; render(); break;
+    case "additem": openAddItem(Number(el.dataset.group)); break;
+    case "addgroup": openAddGroup(); break;
+    case "nextmonth": {
+      const latest = monthsSorted()[monthsSorted().length - 1];
+      const nm = addMonths(latest, 1);
+      if (await ensureMonth(nm)) { UI.month = nm; render(); }
+      break;
+    }
+    case "savememo": {
+      const memo = $("#month-memo").value;
+      await setDoc("months", UI.month, { ...(S.months[UI.month] || { month: UI.month, closed: false }), month: UI.month, memo });
+      toast("Memo saved");
+      break;
+    }
+    case "closemonth": openMonthClose(flows); break;
+    case "reopenmonth":
+      await setDoc("months", UI.month, { ...S.months[UI.month], closed: false });
+      toast("Month reopened");
+      break;
+    case "edittxn": {
+      const t = S.transactions.find(x => x.id === Number(el.dataset.txn));
+      if (t) openTxnForm({ txn: t });
+      break;
+    }
+    case "togglecleared": {
+      e.stopPropagation();
+      const t = S.transactions.find(x => x.id === Number(el.dataset.txn));
+      if (t) await setDoc("transactions", t.id, { ...t, cleared: !t.cleared });
+      break;
+    }
+    case "confirmrow": {
+      const row = S.statementRows.find(r => r.id === Number(el.dataset.row));
+      if (!row) break;
+      const sel = $("#row-item-" + row.id);
+      const itemId = (sel && sel.value) ? Number(sel.value)
+        : (row.guessedItemId || (guessItemFor(row.description) || {}).id);
+      if (!itemId) { toast("Pick a budget item for that row first"); break; }
+      if (await confirmStatementRow(row, itemId)) toast("Confirmed");
+      break;
+    }
+    case "splitrow": {
+      const row = S.statementRows.find(r => r.id === Number(el.dataset.row));
+      if (!row) break;
+      const sel = $("#row-item-" + row.id);
+      const imp = S.statementImports.find(i => i.id === row.importId);
+      openTxnForm({ date: row.date, description: row.description, amountCents: row.amountCents,
+        accountId: imp ? imp.accountId : null, itemId: sel ? Number(sel.value) : null,
+        statementRowId: row.id });
+      break;
+    }
+    case "skiprow": {
+      const row = S.statementRows.find(r => r.id === Number(el.dataset.row));
+      if (row) await setDoc("statementRows", row.id, { ...row, status: "skipped" });
+      break;
+    }
+    case "confirmall": {
+      const rows = S.statementRows.filter(r => r.importId === UI.reviewImportId && r.status === "pending")
+        .sort((a, b) => a.id - b.id);
+      let done = 0;
+      for (const row of rows) {
+        const sel = $("#row-item-" + row.id);
+        const itemId = sel ? Number(sel.value) : (row.guessedItemId || (guessItemFor(row.description) || {}).id);
+        if (itemId && await confirmStatementRow(row, itemId)) done++;
+      }
+      toast(`Confirmed ${done} of ${rows.length} rows`);
+      break;
+    }
+    case "setbalance": openSetBalance(Number(el.dataset.acct)); break;
+    case "reconcile": openReconcile(Number(el.dataset.acct)); break;
+    case "addaccount": openAddAccount(); break;
+    case "transfer": openTransfer(); break;
+    case "addrecurring": openAddRecurring(); break;
+    case "postdue": await postAllDue(); break;
+    case "postrecurring": {
+      const r = S.recurring.find(x => x.id === Number(el.dataset.id));
+      if (r) { await postRecurring(r, r.nextDate, 1); toast("Posted"); }
+      break;
+    }
+    case "delrecurring": {
+      const r = S.recurring.find(x => x.id === Number(el.dataset.id));
+      if (r && confirm(`Delete the recurring "${r.merchant}"?`)) await delDoc("recurring", r.id);
+      break;
+    }
+    case "exportbackup": exportBackup(); break;
+    case "exporttxns": exportTransactionsCSV(); break;
+    case "exportbudget": exportBudgetCSV(flows); break;
+    case "print": window.print(); break;
+    case "signout": if (auth) await auth.signOut(); break;
+  }
+}
+</script>
+<script>
+"use strict";
+/* ---------------- account operations ---------------- */
+function fmtNoComma(c) {
+  const neg = c < 0, a = Math.abs(c);
+  return (neg ? "-$" : "$") + Math.floor(a / 100) + "." + String(a % 100).padStart(2, "0");
+}
+function openSetBalance(acctId) {
+  const a = accountById(acctId);
+  if (!a) return;
+  const cur = accountBalance(acctId);
+  openModal(`<h2>Set balance — ${esc(a.name)}</h2>
+    <p class="small muted">Type the exact amount this account holds right now. It's an absolute set,
+    not an addition — the difference is recorded as a dated "Balance adjustment" so history stays honest.</p>
+    ${fieldHtml("Balance on hand", `<input type="text" id="sb-amount" inputmode="numeric">`)}
+    ${modalActions("Set balance")}`);
+  bindModalClose();
+  const inp = attachMoneyInput($("#sb-amount"), cur);
+  $("[data-save]", $("#modal-root")).addEventListener("click", async () => {
+    const target = inp.getCents();
+    const diff = target - accountBalance(acctId);
+    if (diff !== 0) {
+      const id = await nextId("transactions");
+      await setDoc("transactions", id, {
+        id, date: todayStr(), merchant: "Balance adjustment",
+        note: `${a.name} balance set by hand to ${fmtNoComma(target)} (was ${fmtNoComma(accountBalance(acctId))}).`,
+        amountCents: diff, accountId: acctId, cleared: true, kind: "standard",
+        transferGroup: null, receiptBlobKey: null, recurringId: null,
+        createdAt: new Date().toISOString() });
+    }
+    closeModal(); toast("Balance set");
+  });
+}
+function openReconcile(acctId) {
+  const a = accountById(acctId);
+  if (!a) return;
+  openModal(`<h2>Reconcile — ${esc(a.name)}</h2>
+    <p class="small muted">Marks every transaction in this account on or before the date as cleared,
+    and records the account as reconciled through that date.</p>
+    ${fieldHtml("Reconciled through", `<input type="date" id="rc-date" value="${todayStr()}">`)}
+    ${modalActions("Reconcile")}`);
+  bindModalClose();
+  $("[data-save]", $("#modal-root")).addEventListener("click", async () => {
+    const through = $("#rc-date").value || todayStr();
+    const ops = [{ type: "set", coll: "accounts", id: acctId, data: { ...a, reconciledThrough: through } }];
+    S.transactions.filter(t => t.accountId === acctId && !t.cleared && t.date <= through)
+      .forEach(t => ops.push({ type: "set", coll: "transactions", id: t.id, data: { ...t, cleared: true } }));
+    await batchWrite(ops);
+    closeModal(); toast("Reconciled through " + through);
+  });
+}
+function openAddAccount() {
+  openModal(`<h2>Add account</h2>
+    ${fieldHtml("Account name", `<input type="text" id="aa-name" placeholder="e.g. Checking">`)}
+    <p class="small muted">Starts at $0.00 — use "Set balance" afterward to enter what it actually holds.</p>
+    ${modalActions("Add account")}`);
+  bindModalClose();
+  $("[data-save]", $("#modal-root")).addEventListener("click", async () => {
+    const name = $("#aa-name").value.trim();
+    if (!name) { toast("Name the account"); return; }
+    const id = await nextId("accounts");
+    const sortOrder = S.accounts.reduce((m, a) => Math.max(m, a.sortOrder), -1) + 1;
+    await setDoc("accounts", id, { id, name, openingBalanceCents: 0, reconciledThrough: null, sortOrder, archived: false });
+    closeModal(); toast("Account added");
+  });
+}
+function openTransfer() {
+  const accts = S.accounts.filter(a => !a.archived);
+  if (accts.length < 2) { toast("You need two accounts to transfer"); return; }
+  openModal(`<h2>Transfer between accounts</h2>
+    ${fieldHtml("From", `<select id="tr-from">${accts.map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join("")}</select>`)}
+    ${fieldHtml("To", `<select id="tr-to">${accts.map((a, i) => `<option value="${a.id}" ${i === 1 ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select>`)}
+    ${fieldHtml("Amount", `<input type="text" id="tr-amount" inputmode="numeric">`)}
+    ${fieldHtml("Date", `<input type="date" id="tr-date" value="${todayStr()}">`)}
+    ${modalActions("Transfer")}`);
+  bindModalClose();
+  const inp = attachMoneyInput($("#tr-amount"), 0);
+  $("[data-save]", $("#modal-root")).addEventListener("click", async () => {
+    const fromId = Number($("#tr-from").value), toId = Number($("#tr-to").value);
+    const cents = inp.getCents(), date = $("#tr-date").value || todayStr();
+    if (fromId === toId) { toast("Pick two different accounts"); return; }
+    if (cents <= 0) { toast("Enter an amount"); return; }
+    const group = "tg-" + Date.now();
+    const [id1, id2] = await nextIds("transactions", 2);
+    const base = { date, cleared: true, kind: "transfer", transferGroup: group, note: "",
+      receiptBlobKey: null, recurringId: null, createdAt: new Date().toISOString() };
+    await batchWrite([
+      { type: "set", coll: "transactions", id: id1, data: { ...base, id: id1, merchant: "Transfer to " + accountById(toId).name, amountCents: -cents, accountId: fromId } },
+      { type: "set", coll: "transactions", id: id2, data: { ...base, id: id2, merchant: "Transfer from " + accountById(fromId).name, amountCents: cents, accountId: toId } },
+    ]);
+    closeModal(); toast("Transfer recorded");
+  });
+}
+
+/* ---------------- add item / group ---------------- */
+function openAddItem(groupId) {
+  const g = groupById(groupId);
+  openModal(`<h2>Add item to ${esc(g ? g.name : "")}</h2>
+    ${fieldHtml("Item name", `<input type="text" id="ai-name" placeholder="e.g. Electric bill">`)}
+    <p class="small muted">The item is added to every month with a $0 planned amount — set its planned amount on the Budget tab.</p>
+    ${modalActions("Add item")}`);
+  bindModalClose();
+  $("[data-save]", $("#modal-root")).addEventListener("click", async () => {
+    const name = $("#ai-name").value.trim();
+    if (!name) { toast("Name the item"); return; }
+    const itemId = await nextId("items");
+    const sortOrder = S.items.filter(i => i.groupId === groupId).reduce((m, i) => Math.max(m, i.sortOrder), -1) + 1;
+    const ms = monthsSorted();
+    const lineIds = await nextIds("monthLines", ms.length);
+    const ops = [{ type: "set", coll: "items", id: itemId, data: {
+      id: itemId, groupId, name, sortOrder, favorite: false, openingBalanceCents: 0,
+      recurringPlannedCents: null, targetCents: null, dueDay: null, archived: false } }];
+    ms.forEach((m, i) => ops.push({ type: "set", coll: "monthLines", id: lineIds[i], data: {
+      id: lineIds[i], month: m, itemId, groupId, itemName: name,
+      groupName: g ? g.name : "", plannedCents: 0, sortOrder } }));
+    await batchWrite(ops);
+    closeModal(); toast("Item added");
+  });
+}
+function openAddGroup() {
+  openModal(`<h2>Add group</h2>
+    ${fieldHtml("Group name", `<input type="text" id="ag-name" placeholder="e.g. Transportation">`)}
+    <div class="field"><label><input type="checkbox" id="ag-income" style="width:auto;"> This is an income group</label></div>
+    ${modalActions("Add group")}`);
+  bindModalClose();
+  $("[data-save]", $("#modal-root")).addEventListener("click", async () => {
+    const name = $("#ag-name").value.trim();
+    if (!name) { toast("Name the group"); return; }
+    const id = await nextId("groups");
+    const sortOrder = S.groups.reduce((m, g) => Math.max(m, g.sortOrder), -1) + 1;
+    await setDoc("groups", id, { id, name, isIncome: $("#ag-income").checked, sortOrder });
+    closeModal(); toast("Group added");
+  });
+}
+
+/* ---------------- month close ---------------- */
+function openMonthClose(flows) {
+  const m = UI.month;
+  const bc = balanceCheck(m, flows);
+  const pendingRows = S.statementRows.filter(r => r.status === "pending" && monthOf(r.date) === m).length;
+  const uncleared = S.transactions.filter(t => !t.cleared && monthOf(t.date) === m).length;
+  const row = (ok, label, detail) => `<div class="checkrow"><span class="st">${ok ? "✅" : "⚠️"}</span>
+    <span><b>${esc(label)}</b><br><span class="small muted">${esc(detail)}</span></span></div>`;
+  openModal(`<h2>Close ${monthLabel(m)}</h2>
+    ${row(bc.difference === 0, "Books balance", bc.difference === 0
+      ? "Accounts and budget agree to the penny." : `Difference is ${fmt(bc.difference)} — closing anyway will snapshot it as-is.`)}
+    ${row(pendingRows === 0, "Statement rows reviewed", pendingRows === 0 ? "Nothing left pending for this month." : pendingRows + " row(s) still pending in Review.")}
+    ${row(uncleared === 0, "Transactions cleared", uncleared === 0 ? "Everything in this month is cleared." : uncleared + " transaction(s) still uncleared (e.g. pending charges).")}
+    <p class="small muted">Closing saves a full backup snapshot of the entire budget, then locks this month's planned amounts. You can reopen it later if needed.</p>
+    <div class="actions"><button class="btn secondary" data-close>Not yet</button>
+      <button class="btn" id="mc-close">Snapshot &amp; close month</button></div>`);
+  bindModalClose();
+  $("#mc-close").addEventListener("click", async () => {
+    const snapId = await nextId("snapshots");
+    await db.collection("snapshots").doc(String(snapId)).set({
+      id: snapId, month: m, createdAt: new Date().toISOString(),
+      createdBy: S.user ? S.user.email : "", kind: "month-close", data: buildBackup() });
+    await setDoc("months", m, { ...S.months[m], closed: true });
+    closeModal(); toast(monthLabel(m) + " closed");
+  });
+}
+
+/* ---------------- recurring ---------------- */
+function advanceDate(dateStr, frequency) {
+  if (frequency === "weekly") return addDays(dateStr, 7);
+  const [y, mo, da] = dateStr.split("-").map(Number);
+  const nm = addMonths(`${y}-${String(mo).padStart(2, "0")}`, 1);
+  const [ny, nmo] = nm.split("-").map(Number);
+  const lastDay = new Date(ny, nmo, 0).getDate();
+  return `${nm}-${String(Math.min(da, lastDay)).padStart(2, "0")}`;
+}
+async function postRecurring(rule, throughDate, maxCount) {
+  let date = rule.nextDate;
+  let count = 0;
+  const ops = [];
+  while (date && date <= throughDate && count < (maxCount || 240)) {
+    const month = monthOf(date);
+    if (!S.months[month] && !(await ensureMonth(month, true))) break;
+    const line = lineOf(month, rule.itemId);
+    if (!line) break;
+    const txnId = await nextId("transactions");
+    const splitId = await nextId("splits");
+    ops.push({ type: "set", coll: "transactions", id: txnId, data: {
+      id: txnId, date, merchant: rule.merchant, note: rule.note || "",
+      amountCents: rule.amountCents, accountId: rule.accountId, cleared: false,
+      kind: "standard", transferGroup: null, receiptBlobKey: null,
+      recurringId: rule.id, createdAt: new Date().toISOString() } });
+    ops.push({ type: "set", coll: "splits", id: splitId, data: {
+      id: splitId, transactionId: txnId, monthLineId: line.id, amountCents: rule.amountCents } });
+    date = advanceDate(date, rule.frequency);
+    count++;
+  }
+  if (count) {
+    ops.push({ type: "set", coll: "recurring", id: rule.id, data: { ...rule, nextDate: date } });
+    await batchWrite(ops);
+  }
+  return count;
+}
+async function postAllDue() {
+  let total = 0;
+  for (const r of S.recurring.filter(r => r.active !== false)) total += await postRecurring(r, todayStr(), 240);
+  toast(total ? `Posted ${total} recurring transaction(s)` : "Nothing due right now");
+  render();
+}
+function openAddRecurring() {
+  openModal(`<h2>Add recurring transaction</h2>
+    ${fieldHtml("Merchant / description", `<input type="text" id="ar-merch" placeholder="e.g. Mortgage — BayCoast Bank">`)}
+    <div class="seg" id="ar-dir"><button data-dir="out" class="on">Money out</button><button data-dir="in">Money in</button></div>
+    ${fieldHtml("Amount", `<input type="text" id="ar-amount" inputmode="numeric">`)}
+    ${fieldHtml("Account", `<select id="ar-account">${S.accounts.filter(a => !a.archived).map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join("")}</select>`)}
+    ${fieldHtml("Budget item", `<select id="ar-item">${itemOptionsGrouped(activeMonth(), null)}</select>`)}
+    ${fieldHtml("Frequency", `<select id="ar-freq"><option value="monthly">Monthly</option><option value="weekly">Weekly</option></select>`)}
+    ${fieldHtml("Next date", `<input type="date" id="ar-next" value="${todayStr()}">`)}
+    ${modalActions("Add recurring")}`);
+  bindModalClose();
+  const inp = attachMoneyInput($("#ar-amount"), 0);
+  let dir = "out";
+  $$("#ar-dir button").forEach(b => b.addEventListener("click", () => {
+    dir = b.dataset.dir;
+    $$("#ar-dir button").forEach(x => x.classList.toggle("on", x === b));
+  }));
+  $("[data-save]", $("#modal-root")).addEventListener("click", async () => {
+    const merchant = $("#ar-merch").value.trim();
+    const cents = inp.getCents();
+    if (!merchant) { toast("Name it"); return; }
+    if (cents <= 0) { toast("Enter an amount"); return; }
+    const id = await nextId("recurring");
+    await setDoc("recurring", id, {
+      id, merchant, note: "", amountCents: dir === "out" ? -cents : cents,
+      accountId: Number($("#ar-account").value), itemId: Number($("#ar-item").value),
+      frequency: $("#ar-freq").value, nextDate: $("#ar-next").value || todayStr(),
+      active: true, createdAt: new Date().toISOString() });
+    closeModal(); toast("Recurring added");
+  });
+}
+
+/* ---------------- backup / export ---------------- */
+function sortedById(arr) { return arr.slice().sort((a, b) => a.id - b.id); }
+function buildBackup() {
+  return {
+    app: "custom-budget-tool", version: 1, exportedAt: new Date().toISOString(),
+    groups: sortedById(S.groups), items: sortedById(S.items),
+    months: monthsSorted().map(m => ({ month: m, closed: !!S.months[m].closed, memo: S.months[m].memo || "" })),
+    monthLines: sortedById(S.monthLines), accounts: sortedById(S.accounts),
+    transactions: sortedById(S.transactions), splits: sortedById(S.splits),
+    recurring: sortedById(S.recurring), statementImports: sortedById(S.statementImports),
+    statementRows: sortedById(S.statementRows), merchantMappings: sortedById(S.merchantMappings),
+    budgetMoves: sortedById(S.budgetMoves),
+  };
+}
+function exportBackup() {
+  download(`budget-backup-${todayStr()}.json`, JSON.stringify(buildBackup(), null, 2), "application/json");
+  toast("Backup downloaded");
+}
+async function handleBackupFile(file) {
+  let data;
+  try { data = JSON.parse(await file.text()); }
+  catch (e) { toast("That file isn't valid JSON"); return; }
+  if (!data || !Array.isArray(data.items) || !Array.isArray(data.monthLines) || !Array.isArray(data.accounts)) {
+    toast("That doesn't look like a budget backup"); return;
+  }
+  if (!confirm("Restore this backup? It REPLACES the entire shared budget (all months, items, accounts and transactions) with the backup's contents. This cannot be undone except by restoring another backup.")) return;
+  const ops = [];
+  COLLECTIONS.forEach(coll => S[coll].forEach(doc => ops.push({ type: "delete", coll, id: doc.id })));
+  Object.keys(S.months).forEach(m => ops.push({ type: "delete", coll: "months", id: m }));
+  const counters = {};
+  COLLECTIONS.forEach(coll => {
+    const rows = Array.isArray(data[coll]) ? data[coll] : [];
+    counters[coll] = rows.reduce((mx, r) => Math.max(mx, r.id || 0), 0) + 1;
+    rows.forEach(r => ops.push({ type: "set", coll, id: r.id, data: r }));
+  });
+  (Array.isArray(data.months) ? data.months : []).forEach(mo =>
+    ops.push({ type: "set", coll: "months", id: mo.month, data: { month: mo.month, closed: !!mo.closed, memo: mo.memo || "" } }));
+  await batchWrite(ops);
+  await db.collection("meta").doc("counters").set(counters);
+  UI.month = activeMonth();
+  toast("Backup restored");
+  render();
+}
+function csvCell(v) {
+  v = String(v == null ? "" : v);
+  return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+}
+function exportTransactionsCSV() {
+  const lines = ["Date,Merchant,Note,Account,Amount,Cleared,Items"];
+  S.transactions.slice().sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id).forEach(t => {
+    const a = accountById(t.accountId);
+    lines.push([t.date, t.merchant, t.note || "", a ? a.name : "", (t.amountCents / 100).toFixed(2),
+      t.cleared ? "yes" : "no", txnItemLabel(t)].map(csvCell).join(","));
+  });
+  download(`transactions-${todayStr()}.csv`, lines.join("\n"), "text/csv");
+}
+function exportBudgetCSV(flows) {
+  const lines = ["Group,Item,Planned,Spent,Remaining,Available"];
+  const month = UI.month;
+  S.groups.slice().sort((a, b) => a.sortOrder - b.sortOrder).forEach(g => {
+    S.monthLines.filter(l => l.month === month && l.groupId === g.id)
+      .sort((a, b) => a.sortOrder - b.sortOrder).forEach(l => {
+        const f = flows.get(l.id) || 0;
+        const spent = isIncomeItem(l.itemId) ? f : -f;
+        lines.push([g.name, l.itemName, (l.plannedCents / 100).toFixed(2), (spent / 100).toFixed(2),
+          ((l.plannedCents - spent) / 100).toFixed(2), (lineAvailable(l, flows) / 100).toFixed(2)].map(csvCell).join(","));
+      });
+  });
+  download(`budget-${month}.csv`, lines.join("\n"), "text/csv");
+}
+
+/* ---------------- auth & boot ---------------- */
+function showView(name) {
+  $("#view-auth").classList.toggle("hidden", name !== "auth");
+  $("#view-denied").classList.toggle("hidden", name !== "denied");
+  $("#view-app").classList.toggle("hidden", name !== "app");
+}
+function initAuth() {
+  if (CONFIG_PLACEHOLDER || !auth) {
+    showView("auth");
+    const n = $("#auth-notice");
+    n.textContent = "This copy isn't connected to Firebase yet (placeholder config). Once the real firebase-config.js is in place, sign-in will work here.";
+    n.classList.remove("hidden");
+    $("#btn-google").disabled = true;
+    $("#btn-emaillink").disabled = true;
+    return;
+  }
+  // completing an email-link sign-in?
+  if (auth.isSignInWithEmailLink(window.location.href)) {
+    let email = window.localStorage.getItem("emailForSignIn");
+    if (!email) email = window.prompt("Confirm the email address the link was sent to:");
+    if (email) {
+      auth.signInWithEmailLink(email, window.location.href)
+        .then(() => {
+          window.localStorage.removeItem("emailForSignIn");
+          window.history.replaceState(null, "", window.location.pathname);
+        })
+        .catch(err => { $("#auth-msg").textContent = "That sign-in link didn't work: " + err.message; });
+    }
+  }
+  auth.onAuthStateChanged(user => {
+    if (user && isAllowed(user.email)) {
+      S.user = user;
+      showView("app");
+      startListeners();
+      render();
+    } else if (user) {
+      S.user = null;
+      stopListeners();
+      showView("denied");
+    } else {
+      S.user = null;
+      stopListeners();
+      showView("auth");
+    }
+  });
+  $("#btn-google").addEventListener("click", () => {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    auth.signInWithPopup(provider).catch(err => {
+      if (err.code === "auth/popup-blocked" || err.code === "auth/cancelled-popup-request" || err.code === "auth/operation-not-supported-in-this-environment") {
+        auth.signInWithRedirect(provider);
+      } else {
+        $("#auth-msg").textContent = "Google sign-in failed: " + err.message;
+      }
+    });
+  });
+  $("#btn-emaillink").addEventListener("click", async () => {
+    const email = $("#auth-email").value.trim();
+    if (!email) { $("#auth-msg").textContent = "Enter your email first."; return; }
+    if (!isAllowed(email)) {
+      $("#auth-msg").textContent = "Accounts are by invite only — that email isn't on the invite list.";
+      return;
+    }
+    try {
+      await auth.sendSignInLinkToEmail(email, { url: window.location.href.split("#")[0], handleCodeInApp: true });
+      window.localStorage.setItem("emailForSignIn", email);
+      $("#auth-msg").textContent = "Sign-in link sent — check your email on this device and tap the link.";
+    } catch (err) {
+      $("#auth-msg").textContent = "Couldn't send the link: " + err.message;
+    }
+  });
+  $("#btn-denied-signout").addEventListener("click", () => auth.signOut());
+}
+function initChrome() {
+  $$("#tabbar button").forEach(b => b.addEventListener("click", () => { UI.tab = b.dataset.tab; render(); window.scrollTo(0, 0); }));
+  $("#m-prev").addEventListener("click", () => {
+    const ms = monthsSorted();
+    const i = ms.indexOf(UI.month);
+    if (i > 0) { UI.month = ms[i - 1]; render(); }
+  });
+  $("#m-next").addEventListener("click", async () => {
+    const ms = monthsSorted();
+    const i = ms.indexOf(UI.month);
+    if (i >= 0 && i < ms.length - 1) { UI.month = ms[i + 1]; render(); }
+    else if (i === ms.length - 1) {
+      const nm = addMonths(UI.month, 1);
+      if (await ensureMonth(nm)) { UI.month = nm; render(); }
+    }
+  });
+  $("#m-select").addEventListener("change", e => { UI.month = e.target.value; render(); });
+  $("#fab").addEventListener("click", () => openTxnForm({}));
+}
+initChrome();
+initAuth();
+if (!auth) showView("auth");
+</script>
+</body>
+</html>
