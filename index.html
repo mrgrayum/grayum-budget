@@ -314,7 +314,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-06 · tabbar-ltb";
+const APP_VERSION = "2026-11-06 · archive-gate";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -1720,6 +1720,24 @@ function openItemDetail(lineId) {
     : { itemId: line.itemId, date: todayStr() }); });
   if (!income) $("#it-move").addEventListener("click", () => { closeModal(); openMoveForm(lineId); });
   $("#it-archive").addEventListener("click", async () => {
+    // Matt's rule (2026-11-06): an item can only be archived EMPTY. A
+    // nonzero Available — saved money or an overspend hole — must be moved
+    // or covered first (he moves it himself; ⇄ Move is right here in this
+    // dialog). Gate on the ACTIVE month's line for the item when one
+    // exists: that's the live pot, whichever month's card was opened.
+    // Income items hold no pot, so they're never blocked.
+    if (!item.archived && !income) {
+      const gateLine = S.monthLines.find(l => l.itemId === item.id && l.month === activeMonth()) || line;
+      const gateAvail = lineAvailable(gateLine, flows);
+      if (gateAvail > 0) {
+        toast(`Can't archive — ${line.itemName} still has ${fmt(gateAvail)} available. Move it to another item first (⇄ Move), then archive.`);
+        return;
+      }
+      if (gateAvail < 0) {
+        toast(`Can't archive — ${line.itemName} is ${fmt(-gateAvail)} overspent. Cover it with a move from another item first, then archive.`);
+        return;
+      }
+    }
     await setDoc("items", item.id, { ...item, archived: !item.archived });
     closeModal(); toast(item.archived ? "Item unarchived" : "Item archived");
   });
