@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Grayum Budget</title>
 <meta name="theme-color" content="#0d2440">
 <style>
@@ -22,6 +22,18 @@
   /* Our own pull-to-refresh replaces the browser's (it also cache-busts);
      stop the browser's gesture from double-firing on Android Chrome. */
   body{overscroll-behavior-y:none;}
+  /* Zoom-drift lock (Matt, 2026-11-06): the page used to shift/zoom a
+     little when he tapped or scrolled on his phone. Three mechanisms,
+     three fixes: (1) touch-action:manipulation kills double-tap zoom;
+     (2) 16px form controls on small screens stop iOS's focus auto-zoom
+     (it zooms into any field under 16px and doesn't always come back);
+     (3) the viewport meta + the gesturestart/two-touch blocks in JS stop
+     pinch zoom (iOS Safari ignores the meta in browser tabs, hence JS).
+     Trade-off, accepted: no deliberate pinch-zoom inside the app. */
+  body{touch-action:manipulation;}
+  @media(max-width:760px){
+    input, select, textarea{font-size:16px !important;}
+  }
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
        background:var(--bg); color:var(--ink); font-size:15px; line-height:1.4;}
   button{font:inherit; cursor:pointer;}
@@ -334,7 +346,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-06 · pull-refresh";
+const APP_VERSION = "2026-11-06 · zoom-lock";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -2104,6 +2116,15 @@ async function hardRefresh() {
     } else hide();
   });
 })();
+
+/* Pinch-zoom block (companion to the CSS zoom-drift lock above): iOS
+   Safari exposes gesturestart for pinch; a two-finger touchmove block
+   covers the rest. One-finger scrolling — including inside modal sheets
+   and the pull-to-refresh above — is untouched. */
+document.addEventListener("gesturestart", e => e.preventDefault());
+document.addEventListener("touchmove", e => {
+  if (e.touches.length > 1 && e.cancelable) e.preventDefault();
+}, { passive: false });
 
 async function handleAct(el, e) {
   const act = el.dataset.act;
