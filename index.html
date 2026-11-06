@@ -296,7 +296,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-05 · archived-list";
+const APP_VERSION = "2026-11-05 · income-detail";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -1481,28 +1481,45 @@ function openItemDetail(lineId) {
   const line = lineById(lineId);
   if (!line) return;
   const item = itemById(line.itemId) || {};
+  const income = isIncomeItem(line.itemId);
   const flows = flowByLine();
   const avail = lineAvailable(line, flows);
   const history = S.transactions.filter(t => S.splits.some(s => s.transactionId === t.id && s.monthLineId === lineId))
     .sort((a, b) => b.date.localeCompare(a.date));
   const moves = S.budgetMoves.filter(mv => mv.month === line.month && (mv.fromItemId === line.itemId || mv.toItemId === line.itemId));
+  // Income items are sources, not spending pots: no target / set-aside /
+  // due day / Move. Instead they designate the account their receipts
+  // land in — items.accountId, the same field promptIncomeDestination
+  // writes when Planned is entered on an income card. Preselect the
+  // saved designation; if none is saved, Checking if present, else the
+  // first account.
+  const destAccounts = income ? S.accounts.filter(a => !a.archived) : [];
+  const destDefault = income
+    ? (destAccounts.find(a => a.id === item.accountId)
+       || destAccounts.find(a => a.name === "Checking")
+       || destAccounts[0] || null)
+    : null;
   openModal(`<h2>${esc(line.itemName)}</h2>
-    <div class="kv"><span class="k">${isIncomeItem(line.itemId) ? "Outstanding" : "Available"} (${monthLabel(line.month)})</span><span class="v ${avail < 0 ? "neg" : ""}">${fmt(avail)}</span></div>
+    <div class="kv"><span class="k">${income ? "Outstanding" : "Available"} (${monthLabel(line.month)})</span><span class="v ${avail < 0 ? "neg" : ""}">${fmt(avail)}</span></div>
     <div class="kv"><span class="k">Planned</span><span class="v">${fmt(line.plannedCents)}</span></div>
     ${fieldHtml("Item name", `<input type="text" id="it-name" value="${esc(item.name || line.itemName)}">`,
       "Renaming updates this item from the current month on — past months keep the name they had.")}
-    ${fieldHtml("Target amount (optional)", `<input type="text" id="it-target" inputmode="numeric">`)}
-    ${fieldHtml("Monthly set-aside for future months (optional)", `<input type="text" id="it-recurring" inputmode="numeric">`,
-      "When a new month is created, this replaces the copied planned amount (e.g. SoundCloud $8.75).")}
-    ${fieldHtml("Due day of month (optional)", `<input type="number" id="it-due" min="1" max="31" value="${item.dueDay || ""}">`)}
+    ${income
+      ? fieldHtml("Paid into", `<select id="it-dest">${destAccounts.map(a =>
+          `<option value="${a.id}" ${destDefault && a.id === destDefault.id ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select>`,
+          "Where new receipts for this income land. Changing it doesn't move money already received.")
+      : fieldHtml("Target amount (optional)", `<input type="text" id="it-target" inputmode="numeric">`)
+        + fieldHtml("Monthly set-aside for future months (optional)", `<input type="text" id="it-recurring" inputmode="numeric">`,
+          "When a new month is created, this replaces the copied planned amount (e.g. SoundCloud $8.75).")
+        + fieldHtml("Due day of month (optional)", `<input type="number" id="it-due" min="1" max="31" value="${item.dueDay || ""}">`)}
     <div class="field"><label><input type="checkbox" id="it-fav" ${item.favorite ? "checked" : ""} style="width:auto;"> Favorite (pinned to top)</label></div>
-    ${history.length ? `<div class="field"><label>Transactions this month</label>` +
+    ${history.length ? `<div class="field"><label>${income ? "Received this month" : "Transactions this month"}</label>` +
       history.map(t => `<div class="small" style="padding:3px 0;">${t.date} · ${esc(t.merchant)} · <b>${fmt(t.amountCents)}</b></div>`).join("") + `</div>` : ""}
     ${moves.length ? `<div class="field"><label>Moves this month</label>` +
       moves.map(mv => `<div class="small" style="padding:3px 0;">${mv.date} · ⇄ ${fmt(mv.amountCents)} ${mv.fromItemId === line.itemId ? "out to " + esc((itemById(mv.toItemId) || {}).name || "") : "in from " + esc((itemById(mv.fromItemId) || {}).name || "")}</div>`).join("") + `</div>` : ""}
     <div class="actions">
-      <button class="btn secondary" id="it-addtxn">+ Transaction</button>
-      <button class="btn secondary" id="it-move">⇄ Move</button>
+      <button class="btn secondary" id="it-addtxn">${income ? "+ Record income" : "+ Transaction"}</button>
+      ${income ? "" : `<button class="btn secondary" id="it-move">⇄ Move</button>`}
     </div>
     <div class="actions">
       <button class="btn secondary" id="it-archive">${item.archived ? "Unarchive item" : "Archive item"}</button>
@@ -1510,23 +1527,34 @@ function openItemDetail(lineId) {
       <button class="btn" data-save>Save</button>
     </div>`);
   bindModalClose();
-  const targetIn = attachMoneyInput($("#it-target"), item.targetCents || 0);
-  const recurIn = attachMoneyInput($("#it-recurring"), item.recurringPlannedCents || 0);
-  $("#it-addtxn").addEventListener("click", () => { closeModal(); openTxnForm({ itemId: line.itemId, date: todayStr() }); });
-  $("#it-move").addEventListener("click", () => { closeModal(); openMoveForm(lineId); });
+  const targetIn = income ? null : attachMoneyInput($("#it-target"), item.targetCents || 0);
+  const recurIn = income ? null : attachMoneyInput($("#it-recurring"), item.recurringPlannedCents || 0);
+  // Recording income presets Money in: openTxnForm derives direction
+  // from the sign of opts.amountCents, so amountCents: 0 selects
+  // "Money in" while prefilling no amount.
+  $("#it-addtxn").addEventListener("click", () => { closeModal(); openTxnForm(income
+    ? { itemId: line.itemId, date: todayStr(), amountCents: 0 }
+    : { itemId: line.itemId, date: todayStr() }); });
+  if (!income) $("#it-move").addEventListener("click", () => { closeModal(); openMoveForm(lineId); });
   $("#it-archive").addEventListener("click", async () => {
     await setDoc("items", item.id, { ...item, archived: !item.archived });
     closeModal(); toast(item.archived ? "Item unarchived" : "Item archived");
   });
   $("[data-save]", $("#modal-root")).addEventListener("click", async () => {
     const newName = $("#it-name").value.trim() || item.name;
-    const ops = [{ type: "set", coll: "items", id: item.id, data: {
-      ...item, name: newName,
-      targetCents: targetIn.getCents() || null,
-      recurringPlannedCents: recurIn.getCents() || null,
-      dueDay: $("#it-due").value ? Math.min(31, Math.max(1, Number($("#it-due").value))) : null,
-      favorite: $("#it-fav").checked,
-    } }];
+    const itemData = { ...item, name: newName, favorite: $("#it-fav").checked };
+    if (income) {
+      // Persist the Paid-into designation to items.accountId — the same
+      // field promptIncomeDestination writes. Nothing else changes: no
+      // transactions are created or moved, no balances shift.
+      const destSel = $("#it-dest");
+      if (destSel && destSel.value) itemData.accountId = Number(destSel.value);
+    } else {
+      itemData.targetCents = targetIn.getCents() || null;
+      itemData.recurringPlannedCents = recurIn.getCents() || null;
+      itemData.dueDay = $("#it-due").value ? Math.min(31, Math.max(1, Number($("#it-due").value))) : null;
+    }
+    const ops = [{ type: "set", coll: "items", id: item.id, data: itemData }];
     // snapshot rule: rename shows from the active month forward only
     const act = activeMonth();
     S.monthLines.filter(l => l.itemId === item.id && l.month >= act && l.itemName !== newName)
