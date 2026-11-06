@@ -102,6 +102,12 @@
   nav.tabbar button .ic{font-size:19px; line-height:1;}
   nav.tabbar button.active{color:var(--green-d); font-weight:700;}
   @media(min-width:760px){
+    /* Desktop has TWO bars that were both sticky at top:0 — the tab bar
+       slid up over the navy header and clipped it mid-scroll (Matt,
+       2026-11-06). Fix: on desktop the header scrolls away like normal
+       page content and only the tab bar sticks. Phones keep the sticky
+       header (their tab bar is fixed at the bottom, no conflict). */
+    header.topbar{position:static;}
     nav.tabbar{position:sticky; top:0; bottom:auto; border-top:none; border-bottom:1px solid var(--line); justify-content:center;}
     nav.tabbar button{flex:0 0 auto; padding:10px 22px; flex-direction:row; font-size:13.5px;}
   }
@@ -299,7 +305,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-06 · lean-imports";
+const APP_VERSION = "2026-11-06 · header-fix";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
