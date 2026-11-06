@@ -191,6 +191,9 @@
   .splitrow{display:flex; gap:8px; margin-bottom:8px; align-items:center;}
   .splitrow select{flex:1.4;} .splitrow input{flex:1;}
   .splitrow .rm{flex:0 0 auto; width:32px; height:38px;}
+  /* Single-item transaction: the row amount mirrors the Amount field
+     above instead of being a second entry, so it reads as a display. */
+  .splitrow input.mirrored{background:var(--bg); color:var(--muted);}
   .checkrow{display:flex; gap:10px; align-items:flex-start; padding:8px 0; border-bottom:1px dashed var(--line);}
   .checkrow:last-child{border-bottom:none;}
   .checkrow .st{font-size:17px;}
@@ -296,7 +299,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-05 · income-detail";
+const APP_VERSION = "2026-11-05 · one-amount";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -1315,7 +1318,23 @@ function openTxnForm(opts) {
     if ([...sel.options].some(o => Number(o.value) === it.accountId)) sel.value = String(it.accountId);
   }
   const splitsRoot = $("#tf-splits");
+  // ONE budget-item row is the common case, and its amount is not a
+  // second entry: it mirrors the Amount field (typing the amount once
+  // is enough). Mirror mode = exactly one row: the row's box is
+  // disabled, styled as a display, and kept equal to the Amount.
+  // Adding a second row starts split mode — row 1 keeps its mirrored
+  // value, every box unlocks, and the helper line shows what's left
+  // to assign. Removing rows back down to one re-enters mirror mode.
+  const mirrorMode = () => txnFormState.splitRows.length === 1;
+  function mirrorRowAmount() {
+    if (!mirrorMode()) return;
+    const r = txnFormState.splitRows[0];
+    const total = amtInput.getCents();
+    r.cents = total;
+    if (r.input) r.input.setCents(total);
+  }
   function drawSplits() {
+    if (mirrorMode()) txnFormState.splitRows[0].cents = amtInput.getCents();
     splitsRoot.innerHTML = txnFormState.splitRows.map((r, i) => `
       <div class="splitrow">
         <select data-split-item="${i}">${lineOptionsGrouped(monthOf($("#tf-date").value), r.lineId)}</select>
@@ -1325,6 +1344,7 @@ function openTxnForm(opts) {
     txnFormState.splitRows.forEach((r, i) => {
       const inp = attachMoneyInput($(`[data-split-amt="${i}"]`, splitsRoot), r.cents);
       r.input = inp;
+      if (mirrorMode()) { inp.disabled = true; inp.classList.add("mirrored"); }
       const selEl = $(`[data-split-item="${i}"]`, splitsRoot);
       if (r.lineId == null && selEl.value) r.lineId = Number(selEl.value); // sync displayed default
       selEl.addEventListener("change", e => { r.lineId = Number(e.target.value); applyIncomeDesignation(r.lineId); });
@@ -1347,14 +1367,15 @@ function openTxnForm(opts) {
     const sum = txnFormState.splitRows.reduce((s, r) => s + r.cents, 0);
     const el = $("#tf-split-sum");
     if (txnFormState.splitRows.length <= 1) { el.textContent = ""; return; }
-    el.textContent = sum === total ? `Splits add up: ${fmt(sum)} ✓`
-      : `Splits: ${fmt(sum)} of ${fmt(total)} — ${fmt(Math.abs(total - sum))} ${sum < total ? "unassigned" : "over"}`;
-    el.style.color = sum === total ? "var(--green-d)" : "var(--red)";
+    const left = total - sum;
+    el.textContent = `Left to assign: ${fmtSigned(left)}${left === 0 ? " ✓" : ""}`;
+    el.style.color = left === 0 ? "var(--green-d)" : "var(--red)";
   }
   txnFormState.splitRows = initSplits.map(s => ({ lineId: s.lineId, cents: s.cents, input: null }));
   drawSplits();
   applyIncomeDesignation(txnFormState.splitRows[0] && txnFormState.splitRows[0].lineId);
-  amtInput.addEventListener("keydown", () => setTimeout(updateSplitSum, 0));
+  amtInput.addEventListener("keydown", () => setTimeout(() => { mirrorRowAmount(); updateSplitSum(); }, 0));
+  amtInput.addEventListener("paste", () => setTimeout(() => { mirrorRowAmount(); updateSplitSum(); }, 0));
   $("#tf-date").addEventListener("change", () => { // re-point pickers at the new month
     syncSplitRowValues();
     drawSplits();
