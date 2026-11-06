@@ -19,6 +19,9 @@
   /* The page must never scroll sideways: `clip` (with `hidden` as the
      fallback for older engines) guards against any stray wide element. */
   html,body{overflow-x:hidden; overflow-x:clip;}
+  /* Our own pull-to-refresh replaces the browser's (it also cache-busts);
+     stop the browser's gesture from double-firing on Android Chrome. */
+  body{overscroll-behavior-y:none;}
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
        background:var(--bg); color:var(--ink); font-size:15px; line-height:1.4;}
   button{font:inherit; cursor:pointer;}
@@ -226,6 +229,12 @@
     background:var(--green); color:#fff; border:none; font-size:27px; box-shadow:0 6px 18px rgba(21,115,71,.4);}
   @media(min-width:760px){ .fab{bottom:26px;} }
   .empty{color:var(--muted); text-align:center; padding:26px 10px;}
+  /* Pull-to-refresh pill (phones): parked above the viewport; the touch
+     handlers below drag it in. pointer-events none so it never blocks. */
+  .ptr{position:fixed; top:0; left:50%; transform:translate(-50%,-80px); z-index:70; background:var(--navy); color:#fff;
+    padding:8px 16px; border-radius:999px; font-size:13px; font-weight:600; box-shadow:var(--shadow);
+    pointer-events:none; opacity:0; white-space:nowrap;}
+  .ptr.snap{transition:transform .18s ease, opacity .18s ease;}
   .toast{position:fixed; left:50%; transform:translateX(-50%); bottom:96px; z-index:60; background:var(--navy); color:#fff;
     padding:10px 16px; border-radius:10px; font-size:13.5px; box-shadow:var(--shadow); max-width:92vw; text-align:center;}
   /* Phone tightening for the account boxes — deliberately placed after the
@@ -311,6 +320,7 @@
 
 <div id="modal-root"></div>
 <div id="toast-root"></div>
+<div id="ptr" class="ptr"><span id="ptr-label">↓ Pull to refresh</span></div>
 
 <script src="firebase-config.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -324,7 +334,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-06 · outstanding-color";
+const APP_VERSION = "2026-11-06 · pull-refresh";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -2039,6 +2049,61 @@ async function hardRefresh() {
   url.searchParams.set("v", String(Date.now())); // set() replaces any existing v param
   window.location.replace(url.toString());
 }
+
+/* Pull-to-refresh (Matt, 2026-11-06): on the phone he hops between this
+   app and the desktop browser and wants one gesture that guarantees he's
+   looking at the current version. A pull down from the very top (with no
+   modal open) drags in a pill; releasing past the threshold runs the same
+   hardRefresh() as the More-tab button — cache-busting reload, data and
+   sign-in untouched. (Live data already syncs on its own via Firestore
+   listeners; what can lag is the app build itself, hence the hard
+   reload.) Touch-only, so desktop is unaffected. */
+(function initPullToRefresh() {
+  const pill = $("#ptr"), label = $("#ptr-label");
+  if (!pill) return;
+  const THRESHOLD = 70, MAX = 110;
+  let startY = null, dist = 0, armed = false;
+  function eligible() {
+    return window.scrollY <= 0 && S.user && !$("#view-app").classList.contains("hidden")
+      && !document.body.classList.contains("scroll-locked") && !$("#modal-root").children.length;
+  }
+  function show(d, ready) {
+    pill.classList.remove("snap");
+    pill.style.opacity = "1";
+    pill.style.transform = `translate(-50%, ${-70 + d}px)`;
+    label.textContent = ready ? "↑ Release to refresh" : "↓ Pull to refresh";
+  }
+  function hide() {
+    pill.classList.add("snap");
+    pill.style.opacity = "0";
+    pill.style.transform = "translate(-50%, -80px)";
+  }
+  document.addEventListener("touchstart", e => {
+    if (e.touches.length !== 1 || !eligible()) { startY = null; return; }
+    startY = e.touches[0].clientY; dist = 0; armed = false;
+  }, { passive: true });
+  document.addEventListener("touchmove", e => {
+    if (startY === null) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy <= 0 || window.scrollY > 0) { if (dist) hide(); dist = 0; armed = false; return; }
+    dist = Math.min(dy * 0.5, MAX);
+    armed = dist >= THRESHOLD;
+    show(dist, armed);
+    if (dy > 6 && e.cancelable) e.preventDefault();
+  }, { passive: false });
+  document.addEventListener("touchend", () => {
+    if (startY === null) return;
+    const fire = armed;
+    startY = null; dist = 0; armed = false;
+    if (fire) {
+      pill.classList.add("snap");
+      pill.style.opacity = "1";
+      pill.style.transform = "translate(-50%, 12px)";
+      label.textContent = "Refreshing…";
+      hardRefresh();
+    } else hide();
+  });
+})();
 
 async function handleAct(el, e) {
   const act = el.dataset.act;
