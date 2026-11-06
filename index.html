@@ -299,7 +299,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-05 · transfer-delete";
+const APP_VERSION = "2026-11-06 · review-cleanup";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -942,13 +942,13 @@ function isDuplicateRow(date, amountCents, desc) {
     const tk = merchantKey(t.merchant);
     return tk === key || (tk && key && (tk.includes(key) || key.includes(tk)));
   }) || S.statementRows.some(r => r.date === date && r.amountCents === amountCents &&
-       merchantKey(r.description) === key && r.status !== "skipped");
+       merchantKey(r.description) === key);
 }
 function reviewView() {
   let h = `<div class="card"><h3>Import a bank statement (CSV)</h3>
-    <p class="small muted">Export a CSV from your bank and pick it here. New rows are checked against
-    transactions already tracked — duplicates are flagged automatically — and each new row gets a
-    guessed budget item from what's been learned from past imports.</p>
+    <p class="small muted">Export a CSV from your bank and pick it here. Rows already tracked are
+    matched automatically and kept out of your way — only genuinely new rows appear below, each with
+    a guessed budget item from what's been learned from past imports.</p>
     <div class="field"><label>Statement account</label>
       <select id="imp-account">${S.accounts.filter(a => !a.archived).map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join("")}</select></div>
     <input type="file" id="imp-file" accept=".csv,text/csv" class="hidden">
@@ -958,13 +958,22 @@ function reviewView() {
   if (!UI.reviewImportId && imps.length) UI.reviewImportId = imps[0].id;
   if (imps.length) {
     h += `<div class="field"><label>Import</label><select id="imp-select">` +
-      imps.map(i => `<option value="${i.id}" ${i.id === UI.reviewImportId ? "selected" : ""}>${esc(i.sourceName)} — ${i.totalRows} rows, ${i.newRows} new, ${i.duplicateRows} duplicates</option>`).join("") +
+      imps.map(i => `<option value="${i.id}" ${i.id === UI.reviewImportId ? "selected" : ""}>${esc(i.sourceName)} — ${i.totalRows} rows</option>`).join("") +
       `</select></div>`;
     const rows = S.statementRows.filter(r => r.importId === UI.reviewImportId)
       .sort((a, b) => (a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1) || a.date.localeCompare(b.date) || a.id - b.id);
     const pending = rows.filter(r => r.status === "pending");
     if (pending.length) h += `<div style="margin-bottom:10px;"><button class="btn small" data-act="confirmall">Confirm all ${pending.length} pending with their items</button></div>`;
-    h += rows.map(r => {
+    // Matt (2026-11-06): duplicates and skipped rows are never listed — he
+    // re-sends the same statement as it updates, so listing them multiplies
+    // noise every upload. They stay stored (any status) purely as dedupe
+    // memory: isDuplicateRow matches stored rows regardless of status, so a
+    // re-upload collapses them instead of resurfacing them as new.
+    const shown = rows.filter(r => r.status === "pending" || r.status === "confirmed");
+    const hiddenDup = rows.filter(r => r.status === "duplicate").length;
+    const hiddenSkip = rows.filter(r => r.status === "skipped").length;
+    if (!shown.length) h += `<p class="small muted">Nothing to review in this import — every row in it is already tracked or skipped.</p>`;
+    h += shown.map(r => {
       const guess = r.guessedItemId ? itemById(r.guessedItemId) : guessItemFor(r.description);
       const selItem = guess ? guess.id : null;
       const pill = r.status === "confirmed" ? `<span class="pill green">confirmed</span>`
@@ -989,6 +998,7 @@ function reviewView() {
         <div class="meta small muted">${r.date} · ${pill}${refundTag}${guess && r.status === "pending" ? ` · guessed: ${esc(guess.name)}` : ""}</div></div>
         <div class="amt ${r.amountCents < 0 ? "neg" : "pos"}">${fmt(r.amountCents)}</div></div>${controls}</div>`;
     }).join("");
+    if (hiddenDup || hiddenSkip) h += `<p class="small muted" style="margin-top:8px;">Not shown: ${hiddenDup} already-tracked and ${hiddenSkip} skipped row${hiddenSkip === 1 ? "" : "s"} from this file — they're remembered only so this statement never resurfaces them as new.</p>`;
   }
   return h;
 }
@@ -1810,7 +1820,7 @@ async function handleStatementFile(file, accountId) {
   await batchWrite(ops);
   UI.reviewImportId = impId;
   UI.tab = "review";
-  toast(`Imported ${parsed.length} rows — ${newCount} new, ${dupCount} duplicates`);
+  toast(newCount ? `Imported — ${newCount} new row${newCount === 1 ? "" : "s"} to review` : "Imported — nothing new; everything was already tracked");
   render();
 }
 async function learnMapping(desc, itemId, ops) {
