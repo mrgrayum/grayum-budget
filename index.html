@@ -292,7 +292,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-05 · income-only-in";
+const APP_VERSION = "2026-11-05 · income-destination";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -1186,6 +1186,16 @@ function openTxnForm(opts) {
     : (opts.itemId && lineOf(month, opts.itemId) ? [{ lineId: lineOf(month, opts.itemId).id, cents: Math.abs(opts.amountCents || 0) }]
     : [{ lineId: null, cents: Math.abs((t && t.amountCents) || opts.amountCents || 0) }]);
   const dirOut = t ? t.amountCents < 0 : (opts.amountCents == null ? true : opts.amountCents < 0);
+  // An income item can carry a planned destination account (items.accountId,
+  // set by the income Planned prompt). Recording money against such a line
+  // starts the account picker on that account. It is a DEFAULT only: an
+  // existing transaction's account, an explicit opts.accountId, or any
+  // manual pick in the form always wins.
+  let defaultAccountId = t ? t.accountId : (opts.accountId != null ? opts.accountId : null);
+  if (defaultAccountId == null && opts.itemId && isIncomeItem(opts.itemId)) {
+    const di = itemById(opts.itemId);
+    if (di && di.accountId != null) defaultAccountId = di.accountId;
+  }
   openModal(`<h2>${t ? "Edit transaction" : "Add transaction"}</h2>
     <div class="seg" id="txn-dir">
       <button data-dir="out" class="${dirOut ? "on" : ""}">Money out</button>
@@ -1195,7 +1205,7 @@ function openTxnForm(opts) {
     ${fieldHtml("Merchant / description", `<input type="text" id="tf-merch" value="${esc(t ? t.merchant : (opts.description || ""))}" placeholder="e.g. Market Basket">`)}
     ${fieldHtml("Amount", `<input type="text" id="tf-amount" inputmode="numeric" value="">`)}
     ${fieldHtml("Account", `<select id="tf-account">${S.accounts.filter(a => !a.archived).map(a =>
-      `<option value="${a.id}" ${t && t.accountId === a.id ? "selected" : (opts.accountId === a.id ? "selected" : "")}>${esc(a.name)}</option>`).join("")}</select>`)}
+      `<option value="${a.id}" ${defaultAccountId === a.id ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select>`)}
     <div class="field"><label>Budget item(s)</label><div id="tf-splits"></div>
       <div class="hint" id="tf-split-sum"></div>
       <button class="btn small secondary" id="tf-addsplit" type="button">+ Split across items</button></div>
@@ -1211,6 +1221,21 @@ function openTxnForm(opts) {
     txnFormState.dir = b.dataset.dir;
     $$("#txn-dir button").forEach(x => x.classList.toggle("on", x === b));
   }));
+  // If a split is (re)pointed at an income line with a designated account,
+  // the account picker follows the designation — until the user picks an
+  // account themselves (an explicit opts.accountId counts as such a pick,
+  // and an existing transaction's account is never overridden).
+  let acctTouched = opts.accountId != null;
+  $("#tf-account").addEventListener("change", () => { acctTouched = true; });
+  function applyIncomeDesignation(lineId) {
+    if (t || acctTouched) return;
+    const ln = lineId ? lineById(lineId) : null;
+    if (!ln || !isIncomeItem(ln.itemId)) return;
+    const it = itemById(ln.itemId);
+    if (!it || it.accountId == null) return;
+    const sel = $("#tf-account");
+    if ([...sel.options].some(o => Number(o.value) === it.accountId)) sel.value = String(it.accountId);
+  }
   const splitsRoot = $("#tf-splits");
   function drawSplits() {
     splitsRoot.innerHTML = txnFormState.splitRows.map((r, i) => `
@@ -1224,7 +1249,7 @@ function openTxnForm(opts) {
       r.input = inp;
       const selEl = $(`[data-split-item="${i}"]`, splitsRoot);
       if (r.lineId == null && selEl.value) r.lineId = Number(selEl.value); // sync displayed default
-      selEl.addEventListener("change", e => { r.lineId = Number(e.target.value); });
+      selEl.addEventListener("change", e => { r.lineId = Number(e.target.value); applyIncomeDesignation(r.lineId); });
       inp.addEventListener("keydown", () => setTimeout(updateSplitSum, 0));
       inp.addEventListener("paste", () => setTimeout(updateSplitSum, 0));
     });
@@ -1250,6 +1275,7 @@ function openTxnForm(opts) {
   }
   txnFormState.splitRows = initSplits.map(s => ({ lineId: s.lineId, cents: s.cents, input: null }));
   drawSplits();
+  applyIncomeDesignation(txnFormState.splitRows[0] && txnFormState.splitRows[0].lineId);
   amtInput.addEventListener("keydown", () => setTimeout(updateSplitSum, 0));
   $("#tf-date").addEventListener("change", () => { // re-point pickers at the new month
     syncSplitRowValues();
@@ -1579,6 +1605,57 @@ async function confirmStatementRow(row, itemId) {
   return true;
 }
 
+/* ---------------- income planned: destination prompt ----------------
+   savePlannedAmount is the ONE shared path for saving a line's Planned
+   amount (the card's inline edit is the only Planned editor — the item
+   detail shows Planned read-only), and the Add-item form routes a new
+   income card's Planned amount through the same prompt. Spending/savings
+   lines save exactly as they always have. Income lines are different
+   (Matt): planned income is DESIGNATED for an account — "Is it going to
+   be money that's planned to go into my cash account? Into my checking
+   account? Into my high yield savings? That's what it's asking." — so
+   when Planned INCREASES on an income line in an open month (edit or
+   brand-new card), ask only: "Which account is this money planned to go
+   into?" Choosing an account stores the designation (items.accountId)
+   and NOTHING else: no transaction, no balance change, no Received
+   change. Planned income becomes actually available only when it is
+   received, and receipt stays a separate act through the ordinary flows
+   (Add transaction, statement import, recurring) — the manual
+   transaction form's account picker defaults to the designated account
+   when a split targets the income line (see openTxnForm). */
+async function savePlannedAmount(line, newCents) {
+  const oldCents = line.plannedCents;
+  if (newCents === oldCents) return;
+  await setDoc("monthLines", line.id, { ...line, plannedCents: newCents });
+  const increase = newCents - oldCents;
+  const monthClosed = !!(S.months[line.month] && S.months[line.month].closed);
+  if (increase > 0 && !monthClosed && isIncomeItem(line.itemId)) {
+    promptIncomeDestination({ ...line, plannedCents: newCents }, increase);
+  }
+}
+
+function promptIncomeDestination(line, cents, itemHint) {
+  const item = itemHint || itemById(line.itemId) || {};
+  const accounts = S.accounts.filter(a => !a.archived);
+  openModal(`<h2>${esc(line.itemName)}</h2>
+    <p>You added ${fmt(cents)} to ${esc(line.itemName)}. Which account is this money planned to go into?</p>
+    <div class="actions" style="flex-direction:column;align-items:stretch;">
+      ${accounts.map(a => `<button class="btn" data-inc-acct="${a.id}">${esc(a.name)}</button>`).join("")}
+      <button class="btn secondary" data-inc-skip>Decide later</button>
+    </div>`);
+  $$("#modal-root [data-inc-acct]").forEach(b => b.addEventListener("click", async () => {
+    const accountId = Number(b.dataset.incAcct);
+    const acctName = (accountById(accountId) || {}).name || "the account";
+    if (item.id != null && item.accountId !== accountId) {
+      await setDoc("items", item.id, { ...item, accountId });
+    }
+    closeModal();
+    toast(`${line.itemName} is planned to go into ${acctName}.`);
+  }));
+  const skip = $("#modal-root [data-inc-skip]");
+  if (skip) skip.addEventListener("click", closeModal);
+}
+
 /* ---------------- view binding & actions ---------------- */
 /* Shared by the More view and the empty-database welcome screen: wires the
    Import backup button + visible file input to the same handleBackupFile().
@@ -1600,8 +1677,7 @@ function bindView(flows) {
     if (!line) return;
     const mi = attachMoneyInput(inp, line.plannedCents, { dollar: true });
     inp.addEventListener("blur", async () => {
-      const v = mi.getCents();
-      if (v !== line.plannedCents) await setDoc("monthLines", line.id, { ...line, plannedCents: v });
+      await savePlannedAmount(line, mi.getCents());
     });
     inp.addEventListener("keydown", e => { if (e.key === "Enter") inp.blur(); });
   });
@@ -1858,26 +1934,44 @@ function openTransfer() {
 /* ---------------- add item / group ---------------- */
 function openAddItem(groupId) {
   const g = groupById(groupId);
+  const act = activeMonth();
   openModal(`<h2>Add item to ${esc(g ? g.name : "")}</h2>
     ${fieldHtml("Item name", `<input type="text" id="ai-name" placeholder="e.g. Electric bill">`)}
-    <p class="small muted">The item is added to every month with a $0 planned amount — set its planned amount on the Budget tab.</p>
+    ${fieldHtml(`Planned amount for ${monthLabel(act)} (optional)`, `<input type="text" id="ai-planned" inputmode="numeric">`,
+      "The item is added to every month; the planned amount applies to this month only — other months start at $0.")}
     ${modalActions("Add item")}`);
   bindModalClose();
+  const plannedIn = attachMoneyInput($("#ai-planned"), 0);
   $("[data-save]", $("#modal-root")).addEventListener("click", async () => {
     const name = $("#ai-name").value.trim();
     if (!name) { toast("Name the item"); return; }
+    const planned = plannedIn.getCents();
     const itemId = await nextId("items");
     const sortOrder = S.items.filter(i => i.groupId === groupId).reduce((m, i) => Math.max(m, i.sortOrder), -1) + 1;
     const ms = monthsSorted();
     const lineIds = await nextIds("monthLines", ms.length);
-    const ops = [{ type: "set", coll: "items", id: itemId, data: {
+    const itemData = {
       id: itemId, groupId, name, sortOrder, favorite: false, openingBalanceCents: 0,
-      recurringPlannedCents: null, targetCents: null, dueDay: null, archived: false } }];
-    ms.forEach((m, i) => ops.push({ type: "set", coll: "monthLines", id: lineIds[i], data: {
-      id: lineIds[i], month: m, itemId, groupId, itemName: name,
-      groupName: g ? g.name : "", plannedCents: 0, sortOrder } }));
+      recurringPlannedCents: null, targetCents: null, dueDay: null, archived: false };
+    const ops = [{ type: "set", coll: "items", id: itemId, data: itemData }];
+    let actLine = null;
+    ms.forEach((m, i) => {
+      const lineData = {
+        id: lineIds[i], month: m, itemId, groupId, itemName: name,
+        groupName: g ? g.name : "", plannedCents: m === act ? planned : 0, sortOrder };
+      if (m === act) actLine = lineData;
+      ops.push({ type: "set", coll: "monthLines", id: lineIds[i], data: lineData });
+    });
     await batchWrite(ops);
     closeModal(); toast("Item added");
+    // A brand-new income card given a Planned amount behaves exactly like
+    // an edited one: the same shared destination prompt, with the new
+    // item passed explicitly (it may not be in S yet — the write just
+    // landed and the snapshot round-trip is not guaranteed synchronous).
+    const actClosed = !!(S.months[act] && S.months[act].closed);
+    if (g && g.isIncome && planned > 0 && actLine && !actClosed) {
+      promptIncomeDestination(actLine, planned, itemData);
+    }
   });
 }
 function openAddGroup() {
