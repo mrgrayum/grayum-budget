@@ -163,8 +163,8 @@
   .txnrow .merch{font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .txnrow .meta{font-size:12px; color:var(--muted);}
   .txnrow .amt{font-weight:800; white-space:nowrap;}
-  .clr{flex:0 0 auto; width:26px; height:26px; border-radius:50%; border:2px solid var(--line); background:#fff;
-    color:var(--green-d); font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center;}
+  .clr{flex:0 0 auto; height:24px; padding:0 10px; border-radius:999px; border:2px solid var(--line); background:#fff;
+    color:var(--green-d); font-size:11.5px; font-weight:700; line-height:1; display:flex; align-items:center; justify-content:center; white-space:nowrap;}
   .clr.on{background:var(--green); border-color:var(--green); color:#fff;}
   .pill{display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:20px; background:#eef2f6; color:var(--navy);}
   .pill.green{background:var(--green-soft); color:var(--green-d);}
@@ -174,9 +174,13 @@
   .searchbar:focus{outline:none; border-color:var(--green);}
 
   /* ---------- modal ---------- */
-  .modal-bg{position:fixed; inset:0; background:rgba(10,22,38,.55); z-index:50; display:flex; align-items:flex-end; justify-content:center;}
+  .modal-bg{position:fixed; inset:0; background:rgba(10,22,38,.55); z-index:50; display:flex; align-items:flex-end; justify-content:center; overscroll-behavior:contain;}
   @media(min-width:760px){ .modal-bg{align-items:center;} }
-  .modal{background:#fff; width:100%; max-width:560px; max-height:92vh; overflow-y:auto; border-radius:18px 18px 0 0; padding:18px;}
+  .modal{background:#fff; width:100%; max-width:560px; max-height:92vh; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; border-radius:18px 18px 0 0; padding:18px;}
+  /* Scroll lock while a modal is open (see lockBodyScroll): the body is
+     frozen at its current offset (JS sets top:-<scrollY>px) so swipes land
+     on the modal sheet, never the page behind it — the reliable iOS fix. */
+  body.scroll-locked{position:fixed; left:0; right:0; width:100%; overflow:hidden;}
   @media(min-width:760px){ .modal{border-radius:18px;} }
   .modal h2{margin:0 0 14px; font-size:18px; color:var(--navy);}
   .modal .actions{display:flex; gap:8px; margin-top:14px;}
@@ -292,7 +296,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-05 · income-destination";
+const APP_VERSION = "2026-11-05 · archive-clear-fixes";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -595,12 +599,24 @@ function lineAvailable(line, flows) {
   if (isIncomeItem(line.itemId)) return line.plannedCents - f;
   return rolledOpening(line.itemId, line.month, flows) + line.plannedCents + f + movesNet(line.itemId, line.month);
 }
-function monthTotals(month, flows) {
+function monthTotals(month, flows, includeArchivedPlan) {
+  // Two populations, kept separate on purpose:
+  // - PLAN figures (incPlanned / outPlanned / ltb) count only items still in
+  //   the plan. An ARCHIVED item is out of the plan while archived, so its
+  //   lines' Planned is excluded — an archived income line must not count
+  //   as expected income while its card is invisible. (Pass
+  //   includeArchivedPlan=true only for the actuals-side coverage math in
+  //   balancer(), which must not move when an item is archived.)
+  // - ACTUAL flows (received / spent) always count EVERY line: real money
+  //   that moved against an item counts whether or not the item is
+  //   currently archived, so balanceCheck's Budget (actual) never moves
+  //   when an item is archived or unarchived.
   let incPlanned = 0, outPlanned = 0, received = 0, spent = 0;
   S.monthLines.filter(l => l.month === month).forEach(l => {
     const f = flows.get(l.id) || 0;
-    if (isIncomeItem(l.itemId)) { incPlanned += l.plannedCents; received += f; }
-    else { outPlanned += l.plannedCents; spent += -f; }
+    const inPlan = includeArchivedPlan || !(itemById(l.itemId) || {}).archived;
+    if (isIncomeItem(l.itemId)) { received += f; if (inPlan) incPlanned += l.plannedCents; }
+    else { spent += -f; if (inPlan) outPlanned += l.plannedCents; }
   });
   return { incPlanned, outPlanned, received, spent, ltb: incPlanned - outPlanned };
 }
@@ -625,11 +641,21 @@ function balanceCheck(month, flows) {
   const carried = carriedInto(month, flows);
   const budgetLayer = carried + t.received - t.spent;
   const acctTotal = accountsTotal();
+  // Expected-not-yet-received is a PLAN figure, so it is computed over the
+  // income items still in the plan (not archived) on BOTH sides of the
+  // subtraction: archiving an income item removes its expectation and its
+  // receipts from this figure together, while the actuals above (carried,
+  // received, spent, difference) always count every real flow.
+  let expPlanned = 0, expReceived = 0;
+  S.monthLines.filter(l => l.month === month).forEach(l => {
+    if (!isIncomeItem(l.itemId) || (itemById(l.itemId) || {}).archived) return;
+    expPlanned += l.plannedCents; expReceived += flows.get(l.id) || 0;
+  });
   return {
     carried, received: t.received, spent: t.spent,
     budgetLayer, accountsTotal: acctTotal,
     difference: acctTotal - budgetLayer,
-    expectedNotYetReceived: Math.max(0, t.incPlanned - t.received),
+    expectedNotYetReceived: Math.max(0, expPlanned - expReceived),
   };
 }
 function activeMonth() {
@@ -645,7 +671,10 @@ function balancer(flows) {
   const assigned = S.monthLines.filter(l => l.month === m && !isIncomeItem(l.itemId))
     .reduce((s, l) => s + lineAvailable(l, flows), 0);
   const held = accountsTotal();
-  const t = monthTotals(m, flows);
+  // Coverage audits real money, so it keeps the full-population totals
+  // (includeArchivedPlan=true): archiving an item must never move Assigned,
+  // Held, Expected or the shortfall — every real transaction still counts.
+  const t = monthTotals(m, flows, true);
   const expected = Math.max(0, t.incPlanned - t.received);
   const gap = assigned - held;
   const over = Math.max(0, gap - expected);
@@ -790,7 +819,11 @@ function lineCard(line, flows) {
 
 function budgetView(flows) {
   const month = UI.month;
-  const lines = S.monthLines.filter(l => l.month === month);
+  // Archived items are out of the plan: their cards (and their group
+  // subtotals and Favorites entries, which derive from this list) are not
+  // rendered. Their lines and transactions still exist and still count in
+  // every actuals figure — see monthTotals/balanceCheck.
+  const lines = S.monthLines.filter(l => l.month === month && !(itemById(l.itemId) || {}).archived);
   const byGroup = new Map();
   lines.forEach(l => { if (!byGroup.has(l.groupId)) byGroup.set(l.groupId, []); byGroup.get(l.groupId).push(l); });
   const groups = S.groups.slice().sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
@@ -849,7 +882,7 @@ function activityView() {
   h += txns.slice(0, 400).map(t => {
     const a = accountById(t.accountId);
     return `<div class="txnrow" data-act="edittxn" data-txn="${t.id}">
-      <button class="clr ${t.cleared ? "on" : ""}" data-act="togglecleared" data-txn="${t.id}" title="Cleared">${t.cleared ? "✓" : ""}</button>
+      <button class="clr ${t.cleared ? "on" : ""}" data-act="togglecleared" data-txn="${t.id}" title="${t.cleared ? "Cleared — tap to mark not cleared" : "Mark this transaction cleared"}">${t.cleared ? "✓ Cleared" : "○ Mark cleared"}</button>
       <div class="main">
         <div class="merch">${esc(t.merchant)}</div>
         <div class="meta">${t.date} · ${esc(a ? a.name : "?")} · ${esc(txnItemLabel(t))}${t.note ? " · " + esc(t.note) : ""}</div>
@@ -1074,11 +1107,37 @@ function recurringListHtml() {
 <script>
 "use strict";
 /* ---------------- modal ---------------- */
+/* Background scroll lock. While any modal is open the page behind it must
+   not scroll — on iOS the reliable way is to freeze the body with
+   position:fixed at the current scroll offset (plain overflow:hidden on
+   html/body does NOT stop rubber-band/background scrolling in iOS
+   Safari/standalone). modalScrollY doubles as the lock flag: it holds the
+   offset saved by the FIRST modal that opened. A modal opened over (or in
+   place of) another — e.g. a confirmation — finds the lock already held
+   and must not overwrite the saved offset (the frozen page reports a
+   scroll position of 0); the single closeModal() that empties the modal
+   root releases the lock and restores the exact prior position. */
+let modalScrollY = null;
+function lockBodyScroll() {
+  if (modalScrollY !== null) return; // already locked: keep the original offset
+  modalScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+  document.body.style.top = "-" + modalScrollY + "px";
+  document.body.classList.add("scroll-locked");
+}
+function unlockBodyScroll() {
+  if (modalScrollY === null) return;
+  const y = modalScrollY;
+  modalScrollY = null;
+  document.body.classList.remove("scroll-locked");
+  document.body.style.top = "";
+  window.scrollTo(0, y);
+}
 function openModal(html) {
   $("#modal-root").innerHTML = `<div class="modal-bg" id="modal-bg"><div class="modal">${html}</div></div>`;
+  lockBodyScroll();
   $("#modal-bg").addEventListener("click", e => { if (e.target.id === "modal-bg") closeModal(); });
 }
-function closeModal() { $("#modal-root").innerHTML = ""; }
+function closeModal() { $("#modal-root").innerHTML = ""; unlockBodyScroll(); }
 function modalActions(saveLabel, extra) {
   return `<div class="actions">${extra || ""}<button class="btn secondary" data-close>Cancel</button>
     <button class="btn" data-save>${esc(saveLabel || "Save")}</button></div>`;
@@ -1098,7 +1157,8 @@ async function ensureMonth(month, silent) {
   const source = earlier.length ? earlier[earlier.length - 1] : (ms.find(m => m > month) || null);
   if (!source) { if (!silent) toast("No month to copy from yet."); return false; }
   if (!silent && !confirm(`Create ${monthLabel(month)} by copying ${monthLabel(source)}?`)) return false;
-  const srcLines = S.monthLines.filter(l => l.month === source)
+  // Archived items get no line in the new month.
+  const srcLines = S.monthLines.filter(l => l.month === source && !(itemById(l.itemId) || {}).archived)
     .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
   const ids = await nextIds("monthLines", srcLines.length);
   const ops = [{ type: "set", coll: "months", id: month, data: { month, closed: false, memo: "" } }];
@@ -1156,7 +1216,8 @@ async function restartMonth(month) {
     "? Its current lines will be replaced with a fresh copy of " + monthLabel(source) + "'s.",
     "Restart month");
   if (!ok) return;
-  const srcLines = S.monthLines.filter(l => l.month === source)
+  // Archived items get no line in the restarted month either.
+  const srcLines = S.monthLines.filter(l => l.month === source && !(itemById(l.itemId) || {}).archived)
     .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
   const ids = await nextIds("monthLines", srcLines.length);
   const ops = S.monthLines.filter(l => l.month === month)
