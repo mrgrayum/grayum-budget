@@ -299,7 +299,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-06 · review-cleanup";
+const APP_VERSION = "2026-11-06 · lean-imports";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -520,6 +520,7 @@ function startListeners() {
     unsubscribers.push(colRef(name).onSnapshot(snap => {
       S[name] = snap.docs.map(d => d.data());
       S.loaded = true;
+      if (name === "statementRows") purgeDuplicateRows();
       render();
     }, err => console.error("listener", name, err)));
   });
@@ -532,6 +533,21 @@ function startListeners() {
   }, err => console.error("listener months", err)));
 }
 function stopListeners() { unsubscribers.forEach(u => u()); unsubscribers = []; }
+
+// One-time hygiene (2026-11-06): imports used to store a copy of every
+// duplicate row. Those copies are redundant — the original row/transaction
+// is the fingerprint — so delete any that still exist. Self-terminating:
+// once none remain, the snapshot stops triggering deletes.
+let dupPurgeRunning = false;
+async function purgeDuplicateRows() {
+  if (dupPurgeRunning) return;
+  const dups = S.statementRows.filter(r => r.status === "duplicate");
+  if (!dups.length) return;
+  dupPurgeRunning = true;
+  try { await batchWrite(dups.map(r => ({ type: "delete", coll: "statementRows", id: r.id }))); }
+  catch (e) { console.error("dup purge", e); }
+  dupPurgeRunning = false;
+}
 
 async function nextIds(coll, n) {
   const ref = db.collection("meta").doc("counters");
@@ -970,7 +986,8 @@ function reviewView() {
     // memory: isDuplicateRow matches stored rows regardless of status, so a
     // re-upload collapses them instead of resurfacing them as new.
     const shown = rows.filter(r => r.status === "pending" || r.status === "confirmed");
-    const hiddenDup = rows.filter(r => r.status === "duplicate").length;
+    const imp = imps.find(i => i.id === UI.reviewImportId);
+    const hiddenDup = imp ? (imp.duplicateRows || 0) : 0;
     const hiddenSkip = rows.filter(r => r.status === "skipped").length;
     if (!shown.length) h += `<p class="small muted">Nothing to review in this import — every row in it is already tracked or skipped.</p>`;
     h += shown.map(r => {
@@ -1797,30 +1814,35 @@ async function handleStatementFile(file, accountId) {
   const parsed = csvToStatementRows(text);
   if (!parsed.length) { toast("No statement rows found in that CSV — check the file format."); return; }
   const impId = await nextId("statementImports");
-  const rowIds = await nextIds("statementRows", parsed.length);
+  // Matt (2026-11-06): tracking a transaction ONCE is enough. Rows the app
+  // already knows (matched against transactions or any stored statement row)
+  // are counted on the import record but never stored again — re-uploading
+  // the same statement adds zero records.
   const seen = new Set();
-  let newCount = 0, dupCount = 0;
-  const ops = [];
-  parsed.forEach((r, i) => {
+  let dupCount = 0;
+  const fresh = [];
+  parsed.forEach(r => {
     const key = r.date + "|" + r.amountCents + "|" + merchantKey(r.description);
-    let status = "pending";
-    if (seen.has(key) || isDuplicateRow(r.date, r.amountCents, r.description)) { status = "duplicate"; dupCount++; }
-    else newCount++;
+    if (seen.has(key) || isDuplicateRow(r.date, r.amountCents, r.description)) { dupCount++; return; }
     seen.add(key);
+    fresh.push(r);
+  });
+  const rowIds = await nextIds("statementRows", fresh.length);
+  const ops = fresh.map((r, i) => {
     const guess = guessItemFor(r.description);
-    ops.push({ type: "set", coll: "statementRows", id: rowIds[i], data: {
+    return { type: "set", coll: "statementRows", id: rowIds[i], data: {
       id: rowIds[i], importId: impId, date: r.date, description: r.description,
       amountCents: r.amountCents,
       guessedItemId: guess ? guess.id : null, guessedItemName: guess ? guess.name : null,
-      status, transactionId: null } });
+      status: "pending", transactionId: null } };
   });
   ops.unshift({ type: "set", coll: "statementImports", id: impId, data: {
     id: impId, sourceName: file.name, importedAt: new Date().toISOString(),
-    totalRows: parsed.length, newRows: newCount, duplicateRows: dupCount, accountId } });
+    totalRows: parsed.length, newRows: fresh.length, duplicateRows: dupCount, accountId } });
   await batchWrite(ops);
   UI.reviewImportId = impId;
   UI.tab = "review";
-  toast(newCount ? `Imported — ${newCount} new row${newCount === 1 ? "" : "s"} to review` : "Imported — nothing new; everything was already tracked");
+  toast(fresh.length ? `Imported — ${fresh.length} new row${fresh.length === 1 ? "" : "s"} to review` : "Imported — nothing new; everything was already tracked");
   render();
 }
 async function learnMapping(desc, itemId, ops) {
