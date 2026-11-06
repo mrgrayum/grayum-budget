@@ -296,7 +296,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-05 · archive-clear-fixes";
+const APP_VERSION = "2026-11-05 · archived-list";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -1056,6 +1056,18 @@ function monthsListHtml() {
       <button class="btn small secondary" data-act="deletemonth" data-month="${m}">Delete month</button></div>`;
   }).join("");
 }
+function archivedListHtml() {
+  const arch = S.items.filter(i => i.archived)
+    .slice().sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  if (!arch.length) return `<p class="small muted">No archived items.</p>`;
+  return arch.map(i => {
+    const g = groupById(i.groupId);
+    return `<div class="txnrow"><div class="main">
+      <div class="merch">${esc(i.name)}</div>
+      <div class="meta">${esc(g ? g.name : "?")}</div></div>
+      <button class="btn small secondary" data-act="unarchive" data-item="${i.id}">Unarchive</button></div>`;
+  }).join("");
+}
 function moreView() {
   return `
   <div class="card"><h3>Months</h3>
@@ -1063,6 +1075,11 @@ function moreView() {
     <p class="small muted">Delete removes a month and its budget lines — a month with transactions
     recorded in it can't be deleted. Restart replaces a month's lines with a fresh copy of the
     month before it, for when a placeholder month was created before its plan was ready.</p>
+  </div>
+  <div class="card"><h3>Archived items</h3>
+    <div id="archived-list">${archivedListHtml()}</div>
+    <p class="small muted">Archived items are hidden from the budget and don't count in the month's plan totals.
+    Unarchive brings an item's card back.</p>
   </div>
   <div class="card"><h3>Recurring transactions</h3>
     <div id="recurring-list">${recurringListHtml()}</div>
@@ -1783,6 +1800,11 @@ async function handleAct(el, e) {
     case "fav": {
       const item = itemById(Number(el.dataset.item));
       if (item) await setDoc("items", item.id, { ...item, favorite: !item.favorite });
+      break;
+    }
+    case "unarchive": {
+      const item = itemById(Number(el.dataset.item));
+      if (item) { await setDoc("items", item.id, { ...item, archived: false }); toast("Item unarchived"); }
       break;
     }
     case "item": openItemDetail(Number(el.dataset.line)); break;
