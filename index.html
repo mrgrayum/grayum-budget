@@ -299,7 +299,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-05 · form-modes";
+const APP_VERSION = "2026-11-05 · refunds";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -578,6 +578,16 @@ function flowByLine() {
   S.splits.forEach(s => m.set(s.monthLineId, (m.get(s.monthLineId) || 0) + s.amountCents));
   return m;
 }
+function lineSpentGross(line) {
+  // A line's displayed Spent counts money OUT only (its negative splits).
+  // Positive splits on a non-income line are refunds: they restore the
+  // line's Available — which uses the NET flow (lineAvailable) — without
+  // rewriting what was spent (Matt's refund rule). The accounts layer
+  // (monthTotals / balanceCheck) keeps net flows, so its identity holds.
+  let s = 0;
+  S.splits.forEach(sp => { if (sp.monthLineId === line.id && sp.amountCents < 0) s -= sp.amountCents; });
+  return s;
+}
 function movesNet(itemId, month) {
   let n = 0;
   S.budgetMoves.forEach(mv => {
@@ -769,7 +779,7 @@ function lineCard(line, flows) {
   const f = flows.get(line.id) || 0;
   const income = isIncomeItem(line.itemId);
   const item = itemById(line.itemId) || {};
-  const spent = income ? f : -f;
+  const spent = income ? f : lineSpentGross(line);
   const remaining = line.plannedCents - spent;
   const avail = lineAvailable(line, flows);
   const closed = S.months[line.month] && S.months[line.month].closed;
@@ -969,9 +979,14 @@ function reviewView() {
           <button class="btn small secondary" data-act="splitrow" data-row="${r.id}">Split…</button>
           <button class="btn small secondary" data-act="skiprow" data-row="${r.id}">Skip</button></div>`;
       }
+      // A credit row whose (pre)selected item is a spending item is a
+      // refund — money back into the item the purchase came from.
+      const postedTxn = r.transactionId ? S.transactions.find(t => t.id === r.transactionId) : null;
+      const refundTag = (postedTxn && postedTxn.kind === "refund") ||
+        (r.status === "pending" && r.amountCents > 0 && guess && !isIncomeItem(guess.id)) ? " · refund" : "";
       return `<div class="line-card"><div class="line-top">
         <div class="main" style="flex:1;"><div style="font-weight:700;">${esc(r.description)}</div>
-        <div class="meta small muted">${r.date} · ${pill}${guess && r.status === "pending" ? ` · guessed: ${esc(guess.name)}` : ""}</div></div>
+        <div class="meta small muted">${r.date} · ${pill}${refundTag}${guess && r.status === "pending" ? ` · guessed: ${esc(guess.name)}` : ""}</div></div>
         <div class="amt ${r.amountCents < 0 ? "neg" : "pos"}">${fmt(r.amountCents)}</div></div>${controls}</div>`;
     }).join("");
   }
@@ -1267,6 +1282,16 @@ function openTxnForm(opts) {
     : (opts.itemId && lineOf(month, opts.itemId) ? [{ lineId: lineOf(month, opts.itemId).id, cents: Math.abs(opts.amountCents || 0) }]
     : [{ lineId: null, cents: Math.abs((t && t.amountCents) || opts.amountCents || 0) }]);
   const dirOut = t ? t.amountCents < 0 : (opts.amountCents == null ? true : opts.amountCents < 0);
+  // A positive transaction whose splits sit on NON-income lines is a
+  // refund — money back into the budget item the purchase came from
+  // (Matt's rule). It lives in Money-in mode with the refund toggle on.
+  // Detected from kind "refund" or from the splits themselves, so
+  // editing a saved refund (or a statement Split… prefill for a credit
+  // row assigned to a spending item) reopens with the toggle armed.
+  const initSplitLines = initSplits.map(s => s.lineId ? lineById(s.lineId) : null).filter(Boolean);
+  const initRefund = !dirOut && ((t && t.kind === "refund") ||
+    (initSplitLines.length > 0 && initSplitLines.every(ln => !isIncomeItem(ln.itemId))));
+  txnFormState.refund = initRefund;
   // An income item can carry a planned destination account (items.accountId,
   // set by the income Planned prompt). Recording money against such a line
   // starts the account picker on that account. It is a DEFAULT only: an
@@ -1282,8 +1307,9 @@ function openTxnForm(opts) {
       <button data-dir="out" class="${dirOut ? "on" : ""}">Money out</button>
       <button data-dir="in" class="${!dirOut ? "on" : ""}">Money in</button>
     </div>
+    <div class="field ${dirOut ? "hidden" : ""}" id="tf-refund-row"><label><input type="checkbox" id="tf-refund" ${initRefund ? "checked" : ""} style="width:auto;"> This is a refund <span class="muted" style="font-weight:400;">— money back into the budget item the purchase came from</span></label></div>
     ${fieldHtml("Date", `<input type="date" id="tf-date" value="${date}">`)}
-    <div class="field"><label id="tf-merch-label">${dirOut ? "Merchant / description" : "From / description"}</label><input type="text" id="tf-merch" value="${esc(t ? t.merchant : (opts.description || ""))}" placeholder="${dirOut ? "e.g. Market Basket" : "e.g. Paycheck, Venmo"}"></div>
+    <div class="field"><label id="tf-merch-label">${dirOut ? "Merchant / description" : "From / description"}</label><input type="text" id="tf-merch" value="${esc(t ? t.merchant : (opts.description || ""))}" placeholder="${dirOut ? "e.g. Market Basket" : (initRefund ? "e.g. Walmart refund" : "e.g. Paycheck, Venmo")}"></div>
     ${fieldHtml("Amount", `<input type="text" id="tf-amount" inputmode="numeric" value="">`)}
     <div class="field"><label id="tf-acct-label">${dirOut ? "Paid from" : "Paid into"}</label><select id="tf-account">${S.accounts.filter(a => !a.archived).map(a =>
       `<option value="${a.id}" ${defaultAccountId === a.id ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select></div>
@@ -1293,17 +1319,31 @@ function openTxnForm(opts) {
     ${fieldHtml("Note", `<input type="text" id="tf-note" value="${esc(t ? (t.note || "") : "")}">`)}
     <div class="field"><label><input type="checkbox" id="tf-cleared" ${t && t.cleared ? "checked" : ""} style="width:auto;"> Cleared</label></div>
     ${t ? `<button class="btn danger" id="tf-delete" type="button">Delete transaction</button>` : ""}
-    ${modalActions(t ? "Save changes" : (dirOut ? "Add expense" : "Record income"))}`);
+    ${modalActions(t ? "Save changes" : (dirOut ? "Add expense" : (initRefund ? "Record refund" : "Record income")))}`);
   bindModalClose();
   const amtInput = attachMoneyInput($("#tf-amount"), Math.abs(t ? t.amountCents : (opts.amountCents || 0)));
   txnFormState.amountInput = amtInput;
   txnFormState.dir = dirOut ? "out" : "in";
+  // The picker population follows the EFFECTIVE mode: Money in with the
+  // refund toggle on offers spending items (the refund restores one),
+  // exactly like Money out; every other state follows the direction.
+  const effMode = () => (txnFormState.dir === "in" && txnFormState.refund) ? "out" : txnFormState.dir;
   $$("#txn-dir button").forEach(b => b.addEventListener("click", () => {
     if (txnFormState.dir === b.dataset.dir) return; // tapping the active side changes nothing
     txnFormState.dir = b.dataset.dir;
+    if (txnFormState.dir === "out" && txnFormState.refund) {
+      // A refund IS money in — flipping to Money out disarms the toggle
+      // so it can't sit armed invisibly behind the other mode.
+      txnFormState.refund = false;
+      const cb = $("#tf-refund"); if (cb) cb.checked = false;
+    }
     $$("#txn-dir button").forEach(x => x.classList.toggle("on", x === b));
     applyDirMode();
   }));
+  $("#tf-refund").addEventListener("change", e => {
+    txnFormState.refund = e.target.checked;
+    applyDirMode(); // same reset discipline as the direction toggle
+  });
   // The form matches the direction the way income cards differ from
   // spending cards: Money in offers income items only, with From /
   // Paid into wording and a "Record income" submit; Money out offers
@@ -1313,7 +1353,7 @@ function openTxnForm(opts) {
   // direction must not leak into the other. Amount, date, description,
   // note and cleared live in the fields and are untouched.
   function firstLineForDir(month) {
-    const wantIncome = txnFormState.dir === "in";
+    const wantIncome = effMode() === "in";
     const groups = S.groups.slice().sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
     for (const g of groups) {
       const lines = S.monthLines.filter(l => l.month === month && l.groupId === g.id
@@ -1325,10 +1365,12 @@ function openTxnForm(opts) {
   }
   function applyDirMode() {
     const income = txnFormState.dir === "in";
+    const refund = income && txnFormState.refund;
     $("#tf-merch-label").textContent = income ? "From / description" : "Merchant / description";
-    $("#tf-merch").placeholder = income ? "e.g. Paycheck, Venmo" : "e.g. Market Basket";
+    $("#tf-merch").placeholder = income ? (refund ? "e.g. Walmart refund" : "e.g. Paycheck, Venmo") : "e.g. Market Basket";
     $("#tf-acct-label").textContent = income ? "Paid into" : "Paid from";
-    if (!t) $("[data-save]", $("#modal-root")).textContent = income ? "Record income" : "Add expense";
+    $("#tf-refund-row").classList.toggle("hidden", !income);
+    if (!t) $("[data-save]", $("#modal-root")).textContent = refund ? "Record refund" : (income ? "Record income" : "Add expense");
     const first = firstLineForDir(monthOf($("#tf-date").value));
     txnFormState.splitRows = [{ lineId: first, cents: amtInput.getCents(), input: null }];
     drawSplits(); // mirror mode refills the fresh row from the Amount field
@@ -1369,7 +1411,7 @@ function openTxnForm(opts) {
     if (mirrorMode()) txnFormState.splitRows[0].cents = amtInput.getCents();
     splitsRoot.innerHTML = txnFormState.splitRows.map((r, i) => `
       <div class="splitrow">
-        <select data-split-item="${i}">${lineOptionsGrouped(monthOf($("#tf-date").value), r.lineId, txnFormState.dir)}</select>
+        <select data-split-item="${i}">${lineOptionsGrouped(monthOf($("#tf-date").value), r.lineId, effMode())}</select>
         <input type="text" data-split-amt="${i}" inputmode="numeric">
         ${txnFormState.splitRows.length > 1 ? `<button class="btn small secondary rm" data-split-rm="${i}" type="button">✕</button>` : ""}
       </div>`).join("");
@@ -1465,12 +1507,17 @@ async function saveTxnForm() {
     return { lineId: target ? target.id : null, itemId, cents: r.cents };
   }).filter(r => r.lineId);
   if (!rows.length) { toast("Pick at least one budget item"); return; }
-  // The pickers only offer items matching the direction, so this can't
-  // fire from the form — cheap insurance against a mismatched split
-  // reaching the books some other way.
-  if (rows.some(r => isIncomeItem(r.itemId) !== (sign === 1))) {
-    toast(sign === 1 ? "That item doesn't match Money in — pick an income item."
-                     : "That item doesn't match Money out — pick a spending item.");
+  // The pickers only offer items matching the (effective) direction, so
+  // this can't fire from the form — cheap insurance against a mismatched
+  // split reaching the books some other way. Coherence rule: Money out
+  // takes spending items; Money in takes income items — UNLESS the
+  // refund toggle is on, in which case Money in takes spending items
+  // (the refund restores the item it came from).
+  const wantIncome = sign === 1 && !st.refund;
+  if (rows.some(r => isIncomeItem(r.itemId) !== wantIncome)) {
+    toast(sign === -1 ? "That item doesn't match Money out — pick a spending item."
+      : st.refund ? "That item doesn't match a refund — pick the item the purchase came from."
+      : "That item doesn't match Money in — pick an income item.");
     return;
   }
   const sum = rows.reduce((s, r) => s + r.cents, 0);
@@ -1486,9 +1533,12 @@ async function saveTxnForm() {
     txnId = await nextId("transactions");
   }
   const old = st.txnId ? S.transactions.find(t => t.id === txnId) : null;
+  let kind = old ? old.kind : "standard";
+  if (sign === 1 && st.refund) kind = "refund";
+  else if (kind === "refund") kind = "standard"; // toggle off / direction flipped while editing a refund
   const txn = {
     id: txnId, date, merchant, note, amountCents: sign * totalAbs, accountId,
-    cleared, kind: old ? old.kind : "standard",
+    cleared, kind,
     transferGroup: old ? old.transferGroup : null,
     receiptBlobKey: old ? old.receiptBlobKey : null,
     recurringId: old ? old.recurringId : null,
@@ -1763,7 +1813,10 @@ async function confirmStatementRow(row, itemId) {
   const ops = [
     { type: "set", coll: "transactions", id: txnId, data: {
       id: txnId, date: row.date, merchant: row.description, note: "",
-      amountCents: row.amountCents, accountId, cleared: true, kind: "standard",
+      amountCents: row.amountCents, accountId, cleared: true,
+      // A CREDIT row assigned to a non-income item is a refund: the
+      // positive split restores that item's Available (Matt's rule).
+      kind: row.amountCents > 0 && !isIncomeItem(itemId) ? "refund" : "standard",
       transferGroup: null, receiptBlobKey: null, recurringId: null,
       createdAt: new Date().toISOString() } },
     { type: "set", coll: "splits", id: splitId, data: {
@@ -2366,7 +2419,7 @@ function exportBudgetCSV(flows) {
     S.monthLines.filter(l => l.month === month && l.groupId === g.id)
       .sort((a, b) => a.sortOrder - b.sortOrder).forEach(l => {
         const f = flows.get(l.id) || 0;
-        const spent = isIncomeItem(l.itemId) ? f : -f;
+        const spent = isIncomeItem(l.itemId) ? f : lineSpentGross(l);
         lines.push([g.name, l.itemName, (l.plannedCents / 100).toFixed(2), (spent / 100).toFixed(2),
           ((l.plannedCents - spent) / 100).toFixed(2), (lineAvailable(l, flows) / 100).toFixed(2)].map(csvCell).join(","));
       });
