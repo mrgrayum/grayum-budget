@@ -292,7 +292,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-05 · unassigned-cash";
+const APP_VERSION = "2026-11-05 · income-only-in";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -1752,51 +1752,10 @@ function fmtNoComma(c) {
   const neg = c < 0, a = Math.abs(c);
   return (neg ? "-$" : "$") + Math.floor(a / 100) + "." + String(a % 100).padStart(2, "0");
 }
-/* Income-group items for a month, in the app's grouped-picker pattern
-   (one optgroup per group, options valued by item id) — used when money is
-   added to an account and needs an income item to land in. */
-function incomeItemOptions(month) {
-  const groups = S.groups.filter(g => g.isIncome)
-    .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
-  return groups.map(g => {
-    const lines = S.monthLines.filter(l => l.month === month && l.groupId === g.id)
-      .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
-    if (!lines.length) return "";
-    return `<optgroup label="${esc(g.name)}">` + lines.map(l =>
-      `<option value="${l.itemId}">${esc(l.itemName)}</option>`).join("") + `</optgroup>`;
-  }).join("");
-}
-
-/* Front door for money added to an account: after the user confirms a
-   HIGHER balance, ask where the new money belongs before anything is
-   written. Resolves with the chosen income item id, or null for
-   "Not now" (today's plain Balance adjustment). Mirrors
-   confirmActionModal's settle pattern. */
-function askAddedMoneyPlan(a, diff) {
-  return new Promise(resolve => {
-    const month = activeMonth();
-    let settled = false;
-    const settle = v => { if (settled) return; settled = true; closeModal(); resolve(v); };
-    openModal(`<h2>You added ${fmt(diff)} to ${esc(a.name)}.</h2>
-      <p>Money added to an account needs a plan. Record it as income received this month
-      and it becomes money you can put into budget items.</p>
-      <p class="small muted">This adds ${fmt(diff)} to the chosen item's Planned and Received for ${monthLabel(month)}.</p>
-      ${fieldHtml("Income item", `<select id="sb-income-item">${incomeItemOptions(month)}</select>`)}
-      <div class="actions"><button class="btn secondary" data-close>Not now</button>
-      <button class="btn" data-save>Record as received</button></div>`);
-    const root = $("#modal-root");
-    $("[data-save]", root).addEventListener("click", () => {
-      const sel = $("#sb-income-item");
-      settle(sel && sel.value ? Number(sel.value) : null);
-    });
-    $$("[data-close]", root).forEach(b => b.addEventListener("click", () => settle(null)));
-    $("#modal-bg").addEventListener("click", e => { if (e.target.id === "modal-bg") settle(null); });
-    bindModalClose();
-  });
-}
-
-/* The plain dated Balance adjustment — used for decreases, and for
-   increases when the front-door question is answered "Not now". */
+/* The plain dated Balance adjustment — decreases only. Increases are
+   refused outright in openSetBalance: the only way money gets INTO an
+   account is an income amount recorded against an income item with
+   that account chosen (or the receiving side of a transfer). */
 async function writeBalanceAdjustment(a, target, cur, diff) {
   const id = await nextId("transactions");
   await setDoc("transactions", id, {
@@ -1813,7 +1772,8 @@ function openSetBalance(acctId) {
   const cur = accountBalance(acctId);
   openModal(`<h2>Set balance — ${esc(a.name)}</h2>
     <p class="small muted">Type the exact amount this account holds right now. It's an absolute set,
-    not an addition — the difference is recorded as a dated "Balance adjustment" so history stays honest.</p>
+    not an addition — a lower amount is recorded as a dated "Balance adjustment" so history stays honest.
+    To put money INTO an account, record it as income and choose the account — balances can't be raised here.</p>
     ${fieldHtml("Balance on hand", `<input type="text" id="sb-amount" inputmode="numeric">`)}
     ${modalActions("Set balance")}`);
   bindModalClose();
@@ -1823,39 +1783,15 @@ function openSetBalance(acctId) {
     const curNow = accountBalance(acctId);
     const diff = target - curNow;
     if (diff === 0) { closeModal(); toast("Balance set"); return; }
-    if (diff < 0) {
-      await writeBalanceAdjustment(a, target, curNow, diff);
-      closeModal(); toast("Balance set");
+    if (diff > 0) {
+      // HARD RULE (Matt): the only way to get money into an account is
+      // to add an income amount and assign it to an account. A balance
+      // increase here is refused and NOTHING is written.
+      toast("To add money to an account, record it as income and choose the account");
       return;
     }
-    // Increase: money entering an account must pass through the budget.
-    // NOTHING is written until the choice is made, so the increase is
-    // recorded exactly once — either as received income split to an
-    // income item (with that line's Planned raised by the same amount,
-    // so it becomes plannable) or as a plain Balance adjustment.
-    const month = activeMonth();
-    const hasIncomeLine = S.monthLines.some(l => l.month === month && isIncomeItem(l.itemId));
-    const itemId = hasIncomeLine ? await askAddedMoneyPlan(a, diff) : null;
-    const line = itemId ? lineOf(month, itemId) : null;
-    if (line) {
-      const txnId = await nextId("transactions");
-      const splitId = await nextId("splits");
-      await batchWrite([
-        { type: "set", coll: "transactions", id: txnId, data: {
-          id: txnId, date: todayStr(), merchant: "Added to " + a.name,
-          note: `${a.name} balance set by hand to ${fmtNoComma(target)} (was ${fmtNoComma(curNow)}); recorded as income received.`,
-          amountCents: diff, accountId: acctId, cleared: true, kind: "standard",
-          transferGroup: null, receiptBlobKey: null, recurringId: null,
-          createdAt: new Date().toISOString() } },
-        { type: "set", coll: "splits", id: splitId, data: {
-          id: splitId, transactionId: txnId, monthLineId: line.id, amountCents: diff } },
-        { type: "set", coll: "monthLines", id: line.id, data: { ...line, plannedCents: line.plannedCents + diff } },
-      ]);
-      toast("Balance set — recorded as received");
-    } else {
-      await writeBalanceAdjustment(a, target, curNow, diff);
-      closeModal(); toast("Balance set");
-    }
+    await writeBalanceAdjustment(a, target, curNow, diff);
+    closeModal(); toast("Balance set");
   });
 }
 function openReconcile(acctId) {
@@ -1879,7 +1815,7 @@ function openReconcile(acctId) {
 function openAddAccount() {
   openModal(`<h2>Add account</h2>
     ${fieldHtml("Account name", `<input type="text" id="aa-name" placeholder="e.g. Checking">`)}
-    <p class="small muted">Starts at $0.00 — use "Set balance" afterward to enter what it actually holds.</p>
+    <p class="small muted">Starts at $0.00 — money gets into it by recording income and choosing this account, or by a transfer in.</p>
     ${modalActions("Add account")}`);
   bindModalClose();
   $("[data-save]", $("#modal-root")).addEventListener("click", async () => {
