@@ -110,7 +110,15 @@
     header.topbar{position:static;}
     nav.tabbar{position:sticky; top:0; bottom:auto; border-top:none; border-bottom:1px solid var(--line); justify-content:center;}
     nav.tabbar button{flex:0 0 auto; padding:10px 22px; flex-direction:row; font-size:13.5px;}
+    /* Left to Budget rides along in the stuck tab bar (Matt, 2026-11-06) —
+       the header's copy scrolls away with the header on desktop. */
+    .tabltb{display:flex; position:absolute; right:18px; top:50%; transform:translateY(-50%);
+      align-items:baseline; gap:8px; font-size:12.5px; color:var(--muted); white-space:nowrap;}
+    .tabltb .val{font-weight:800; font-size:15px; color:var(--ink);}
+    .tabltb .val.pos{color:var(--green-d);}
+    .tabltb .val.neg{color:var(--red);}
   }
+  .tabltb{display:none;}
 
   /* ---------- cards & panels ---------- */
   .card{background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:14px; margin-bottom:12px;}
@@ -284,6 +292,7 @@
     <button data-tab="review"><span class="ic">✓</span>Review</button>
     <button data-tab="accounts"><span class="ic">▤</span>Accounts</button>
     <button data-tab="more"><span class="ic">•••</span>More</button>
+    <div class="tabltb" id="tabltb"><span>Left to Budget</span><span class="val" id="tabltb-val">$0.00</span></div>
   </nav>
 
   <main id="main"></main>
@@ -305,7 +314,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-06 · header-fix";
+const APP_VERSION = "2026-11-06 · tabbar-ltb";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -756,6 +765,10 @@ function renderHeader(flows) {
   $("#ltb-box").style.visibility = showMonthNav ? "visible" : "hidden";
   const t = monthTotals(UI.month, flows);
   $("#ltb-val").textContent = fmt(t.ltb);
+  const tlv = $("#tabltb-val");
+  tlv.textContent = fmt(t.ltb);
+  tlv.className = "val" + (t.ltb > 0 ? " pos" : t.ltb < 0 ? " neg" : "");
+  $("#tabltb").style.visibility = showMonthNav ? "visible" : "hidden";
   const over = $("#overbar");
   // The header over-budget bar IS the planning comparison: it renders the
   // browsed month's excess of put-ins over expected income (−Left to
