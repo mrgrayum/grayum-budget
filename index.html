@@ -320,6 +320,32 @@ function diffBanner(d) { // one-line verdict under the Difference row in the Tot
   if (d > 0) return `<div class="small pos" style="margin-top:4px;">${fmtSigned(d)} in your accounts isn't assigned to a budget item yet.</div>`;
   return `<div class="small neg" style="margin-top:4px;">Your budget assigns ${fmt(-d)} more than your accounts hold.</div>`;
 }
+function planVerdict(flows) { // Matt's two plan checks, as compact verdict lines in the Total Available Dollars panel
+  // PLANNING (his rule): whatever is put into Planned this month can only
+  // equal the income expected this month — total put-ins into non-income
+  // items vs total expected income (= Left to Budget for the month).
+  // Three states, all shown in this panel: under-planned is POSITIVE
+  // (expected income not yet put into items), exactly equal balances,
+  // over-planned is red. Planned amounts are checked against expected
+  // income itself — stray unassigned cash in the accounts does NOT
+  // excuse planning beyond it.
+  // COVERAGE: everything assigned across items (their Available totals)
+  // must be backed by money on hand plus income still coming in — the
+  // Account Balancer's shortfall (Assigned − Held − Expected-not-yet-
+  // received, floored at 0). Both checks anchor to the ACTIVE month.
+  const t = monthTotals(activeMonth(), flows);
+  const b = balancer(flows);
+  const ltb = t.incPlanned - t.outPlanned; // Left to Budget, active month
+  const cov = `Assigned ${fmt(b.assigned)} · ${fmt(b.held)} on hand + ${fmt(b.expected)} still coming in`;
+  let plan;
+  if (ltb > 0) plan = `<div class="small pos" style="margin-top:4px;">You still have ${fmt(ltb)} to plan — expected income not yet put into items.</div>`;
+  else if (ltb === 0) plan = `<div class="small pos" style="margin-top:4px;">Plan balances — put-ins equal expected income this month.</div>`;
+  else plan = `<div class="small neg" style="margin-top:4px;">Over budget — ${fmt(-ltb)} more planned into items than the ${fmt(t.incPlanned)} expected this month.</div>`;
+  const covLine = b.over > 0
+    ? `<div class="small neg" style="margin-top:4px;">${cov} (${fmt(b.over)} too much)</div>`
+    : `<div class="small muted" style="margin-top:4px;">${cov}</div>`;
+  return plan + covLine;
+}
 function todayStr() {
   const d = new Date();
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
@@ -652,6 +678,11 @@ function renderHeader(flows) {
   const t = monthTotals(UI.month, flows);
   $("#ltb-val").textContent = fmt(t.ltb);
   const over = $("#overbar");
+  // The header over-budget bar IS the planning comparison: it renders the
+  // browsed month's excess of put-ins over expected income (−Left to
+  // Budget) whenever that goes negative. The Total Available Dollars
+  // panel separately shows the planning verdict and the coverage verdict
+  // for the active month.
   if (showMonthNav && t.ltb < 0) {
     over.textContent = fmt(-t.ltb) + " over budget";
     over.classList.remove("hidden");
@@ -679,6 +710,9 @@ function tadPanel(flows) {
     ${diffBanner(bc.difference)}
     <div class="kv"><span class="k muted">Expected, not yet received (not counted above)</span>
       <span class="v muted">${fmt(bc.expectedNotYetReceived)}</span></div>
+    <div class="kv"><span class="k muted">Expected income this month</span>
+      <span class="v muted">${fmt(monthTotals(activeMonth(), flows).incPlanned)}</span></div>
+    ${planVerdict(flows)}
   </div>`;
 }
 
@@ -906,7 +940,7 @@ function balancerPanel(flows) {
   const b = balancer(flows);
   let third;
   if (b.over > 0) third = `<div class="kv"><span class="k">Over budget</span><span class="v neg">${fmt(b.over)}</span></div>
-    <div class="small" style="color:var(--red); font-weight:600;">Expected income won't cover the assignments — this same amount shows at the top of the Budget view.</div>`;
+    <div class="small" style="color:var(--red); font-weight:600;">Expected income won't cover the assignments.</div>`;
   else if (b.gap > 0) third = `<div class="kv"><span class="k">Yet to receive</span><span class="v">${fmt(b.gap)}</span></div>
     <div class="small muted">This month's planned income that hasn't arrived yet — it backs these assignments as paychecks land.</div>`;
   else if (b.gap < 0) third = `<div class="kv"><span class="k">Not yet assigned</span><span class="v">${fmt(-b.gap)}</span></div>
@@ -953,6 +987,8 @@ function tadPanelFor(month, flows) {
     <div class="kv"><span class="k">Budget (actual)</span><span class="v">${fmt(bc.budgetLayer)}</span></div>
     <div class="kv"><span class="k">Difference</span><span class="v ${diffCls(bc.difference)}">${fmtSigned(bc.difference)}</span></div>
     ${diffBanner(bc.difference)}
+    <div class="kv"><span class="k muted">Expected income this month</span><span class="v muted">${fmt(monthTotals(month, flows).incPlanned)}</span></div>
+    ${planVerdict(flows)}
   </div>`;
 }
 
