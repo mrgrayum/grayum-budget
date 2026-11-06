@@ -8,7 +8,7 @@
 <style>
   :root{
     --navy:#0d2440; --navy2:#123058; --ink:#14202e; --muted:#68788a;
-    --green:#1f9d63; --green-d:#157347; --green-soft:#e5f5ec;
+    --green:#1f9d63; --green-d:#157347; --green-soft:#e5f5ec; --amber-soft:#fdf3d0;
     --red:#d92d20; --red-soft:#fdecea;
     --line:#dde4ec; --bg:#f2f5f8; --card:#ffffff;
     --radius:14px;
@@ -167,6 +167,11 @@
   .line-nums .cell .n{font-size:14.5px; font-weight:700;}
   .line-nums .cell .n.neg{color:var(--red);}
   .line-nums .cell.avail{background:var(--green-soft);}
+  /* Income Outstanding (Matt, 2026-11-06): green means "nothing owed" —
+     $0 outstanding keeps the green; anything still outstanding is yellow
+     (waiting on money — attention, not alarm). Spending Available keeps
+     its always-green/red treatment; this only affects income lines. */
+  .line-nums .cell.avail.waiting{background:var(--amber-soft);}
   .planned-edit{width:100%; border:none; background:transparent; text-align:center; font-weight:700; font-size:14.5px; padding:0; color:var(--ink);}
   .planned-edit:focus{outline:none;}
   .progress{height:5px; background:#e7edf3; border-radius:3px; margin-top:9px; overflow:hidden;}
@@ -319,7 +324,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-06 · archive-gate";
+const APP_VERSION = "2026-11-06 · outstanding-color";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -863,7 +868,7 @@ function lineCard(line, flows) {
                  : `<input class="planned-edit money" data-line="${line.id}" value="${fmt(line.plannedCents)}" inputmode="numeric" aria-label="Planned for ${esc(line.itemName)}">`}
       </div>
       <div class="cell"><div class="l">${income ? "Received" : "Spent"}</div><div class="n">${fmt(spent)}</div></div>
-      <div class="cell avail"><div class="l">${income ? "Outstanding" : "Available"}</div><div class="n ${avail < 0 ? "neg" : ""}">${fmt(avail)}</div></div>
+      <div class="cell avail${income && avail > 0 ? " waiting" : ""}"><div class="l">${income ? "Outstanding" : "Available"}</div><div class="n ${avail < 0 ? "neg" : ""}">${fmt(avail)}</div></div>
     </div>
     ${target}
     <div class="progress"><div class="${overCls}" style="width:${pct}%"></div></div>
