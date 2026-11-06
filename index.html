@@ -299,7 +299,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-05 · refunds";
+const APP_VERSION = "2026-11-05 · transfer-delete";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -1463,12 +1463,35 @@ function openTxnForm(opts) {
   });
   const delBtn = $("#tf-delete");
   if (delBtn) delBtn.addEventListener("click", async () => {
-    if (!confirm("Delete this transaction? Its budget splits go with it.")) return;
-    const ops = S.splits.filter(s => s.transactionId === t.id)
+    // A transfer is stored as a matched pair sharing a transferGroup.
+    // Deleting only the opened leg would orphan its sibling and move the
+    // accounts difference, so a complete transfer is deleted as one unit.
+    const transferLegs = t.kind === "transfer" && t.transferGroup
+      ? S.transactions.filter(x => x.transferGroup === t.transferGroup)
+      : [];
+    const isTransferPair = transferLegs.length > 1;
+    const targets = isTransferPair ? transferLegs : [t];
+    let ok;
+    if (isTransferPair) {
+      const outLeg = transferLegs.find(x => x.amountCents < 0);
+      const inLeg = transferLegs.find(x => x.amountCents > 0);
+      const fromName = (outLeg && accountById(outLeg.accountId) || {}).name || "one account";
+      const toName = (inLeg && accountById(inLeg.accountId) || {}).name || "another account";
+      const amount = Math.abs((outLeg || t).amountCents);
+      ok = await confirmActionModal("Delete this transfer?",
+        `Both sides will be removed: ${fmt(amount)} from ${fromName} to ${toName}.`,
+        "Delete transfer");
+    } else {
+      ok = await confirmActionModal("Delete this transaction?",
+        "Its budget splits go with it.", "Delete transaction");
+    }
+    if (!ok) return;
+    const targetIds = new Set(targets.map(x => x.id));
+    const ops = S.splits.filter(s => targetIds.has(s.transactionId))
       .map(s => ({ type: "delete", coll: "splits", id: s.id }));
-    ops.push({ type: "delete", coll: "transactions", id: t.id });
+    targets.forEach(x => ops.push({ type: "delete", coll: "transactions", id: x.id }));
     await batchWrite(ops);
-    closeModal(); toast("Transaction deleted");
+    closeModal(); toast(isTransferPair ? "Transfer deleted" : "Transaction deleted");
   });
   $("[data-save]", $("#modal-root")).addEventListener("click", () => saveTxnForm());
 }
