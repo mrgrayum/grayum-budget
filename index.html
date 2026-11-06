@@ -299,7 +299,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-05 · one-amount";
+const APP_VERSION = "2026-11-05 · form-modes";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -1283,25 +1283,57 @@ function openTxnForm(opts) {
       <button data-dir="in" class="${!dirOut ? "on" : ""}">Money in</button>
     </div>
     ${fieldHtml("Date", `<input type="date" id="tf-date" value="${date}">`)}
-    ${fieldHtml("Merchant / description", `<input type="text" id="tf-merch" value="${esc(t ? t.merchant : (opts.description || ""))}" placeholder="e.g. Market Basket">`)}
+    <div class="field"><label id="tf-merch-label">${dirOut ? "Merchant / description" : "From / description"}</label><input type="text" id="tf-merch" value="${esc(t ? t.merchant : (opts.description || ""))}" placeholder="${dirOut ? "e.g. Market Basket" : "e.g. Paycheck, Venmo"}"></div>
     ${fieldHtml("Amount", `<input type="text" id="tf-amount" inputmode="numeric" value="">`)}
-    ${fieldHtml("Account", `<select id="tf-account">${S.accounts.filter(a => !a.archived).map(a =>
-      `<option value="${a.id}" ${defaultAccountId === a.id ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select>`)}
+    <div class="field"><label id="tf-acct-label">${dirOut ? "Paid from" : "Paid into"}</label><select id="tf-account">${S.accounts.filter(a => !a.archived).map(a =>
+      `<option value="${a.id}" ${defaultAccountId === a.id ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select></div>
     <div class="field"><label>Budget item(s)</label><div id="tf-splits"></div>
       <div class="hint" id="tf-split-sum"></div>
       <button class="btn small secondary" id="tf-addsplit" type="button">+ Split across items</button></div>
     ${fieldHtml("Note", `<input type="text" id="tf-note" value="${esc(t ? (t.note || "") : "")}">`)}
     <div class="field"><label><input type="checkbox" id="tf-cleared" ${t && t.cleared ? "checked" : ""} style="width:auto;"> Cleared</label></div>
     ${t ? `<button class="btn danger" id="tf-delete" type="button">Delete transaction</button>` : ""}
-    ${modalActions(t ? "Save changes" : "Add transaction")}`);
+    ${modalActions(t ? "Save changes" : (dirOut ? "Add expense" : "Record income"))}`);
   bindModalClose();
   const amtInput = attachMoneyInput($("#tf-amount"), Math.abs(t ? t.amountCents : (opts.amountCents || 0)));
   txnFormState.amountInput = amtInput;
   txnFormState.dir = dirOut ? "out" : "in";
   $$("#txn-dir button").forEach(b => b.addEventListener("click", () => {
+    if (txnFormState.dir === b.dataset.dir) return; // tapping the active side changes nothing
     txnFormState.dir = b.dataset.dir;
     $$("#txn-dir button").forEach(x => x.classList.toggle("on", x === b));
+    applyDirMode();
   }));
+  // The form matches the direction the way income cards differ from
+  // spending cards: Money in offers income items only, with From /
+  // Paid into wording and a "Record income" submit; Money out offers
+  // spending items, Merchant / Paid from, "Add expense". Toggling
+  // direction re-renders those pieces and collapses the split rows to
+  // a single row on the new mode's first item — a split built for one
+  // direction must not leak into the other. Amount, date, description,
+  // note and cleared live in the fields and are untouched.
+  function firstLineForDir(month) {
+    const wantIncome = txnFormState.dir === "in";
+    const groups = S.groups.slice().sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+    for (const g of groups) {
+      const lines = S.monthLines.filter(l => l.month === month && l.groupId === g.id
+        && isIncomeItem(l.itemId) === wantIncome)
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+      if (lines.length) return lines[0].id;
+    }
+    return null;
+  }
+  function applyDirMode() {
+    const income = txnFormState.dir === "in";
+    $("#tf-merch-label").textContent = income ? "From / description" : "Merchant / description";
+    $("#tf-merch").placeholder = income ? "e.g. Paycheck, Venmo" : "e.g. Market Basket";
+    $("#tf-acct-label").textContent = income ? "Paid into" : "Paid from";
+    if (!t) $("[data-save]", $("#modal-root")).textContent = income ? "Record income" : "Add expense";
+    const first = firstLineForDir(monthOf($("#tf-date").value));
+    txnFormState.splitRows = [{ lineId: first, cents: amtInput.getCents(), input: null }];
+    drawSplits(); // mirror mode refills the fresh row from the Amount field
+    applyIncomeDesignation(first);
+  }
   // If a split is (re)pointed at an income line with a designated account,
   // the account picker follows the designation — until the user picks an
   // account themselves (an explicit opts.accountId counts as such a pick,
@@ -1337,7 +1369,7 @@ function openTxnForm(opts) {
     if (mirrorMode()) txnFormState.splitRows[0].cents = amtInput.getCents();
     splitsRoot.innerHTML = txnFormState.splitRows.map((r, i) => `
       <div class="splitrow">
-        <select data-split-item="${i}">${lineOptionsGrouped(monthOf($("#tf-date").value), r.lineId)}</select>
+        <select data-split-item="${i}">${lineOptionsGrouped(monthOf($("#tf-date").value), r.lineId, txnFormState.dir)}</select>
         <input type="text" data-split-amt="${i}" inputmode="numeric">
         ${txnFormState.splitRows.length > 1 ? `<button class="btn small secondary rm" data-split-rm="${i}" type="button">✕</button>` : ""}
       </div>`).join("");
@@ -1398,10 +1430,13 @@ function openTxnForm(opts) {
   });
   $("[data-save]", $("#modal-root")).addEventListener("click", () => saveTxnForm());
 }
-function lineOptionsGrouped(month, selectedLineId) {
+function lineOptionsGrouped(month, selectedLineId, mode) {
+  // mode "in" lists income items only, "out" non-income only; no mode
+  // (other callers) lists everything, as before.
   const groups = S.groups.slice().sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
   return groups.map(g => {
-    const lines = S.monthLines.filter(l => l.month === month && l.groupId === g.id)
+    const lines = S.monthLines.filter(l => l.month === month && l.groupId === g.id
+      && (mode == null || isIncomeItem(l.itemId) === (mode === "in")))
       .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
     if (!lines.length) return "";
     return `<optgroup label="${esc(g.name)}">` + lines.map(l =>
@@ -1430,6 +1465,14 @@ async function saveTxnForm() {
     return { lineId: target ? target.id : null, itemId, cents: r.cents };
   }).filter(r => r.lineId);
   if (!rows.length) { toast("Pick at least one budget item"); return; }
+  // The pickers only offer items matching the direction, so this can't
+  // fire from the form — cheap insurance against a mismatched split
+  // reaching the books some other way.
+  if (rows.some(r => isIncomeItem(r.itemId) !== (sign === 1))) {
+    toast(sign === 1 ? "That item doesn't match Money in — pick an income item."
+                     : "That item doesn't match Money out — pick a spending item.");
+    return;
+  }
   const sum = rows.reduce((s, r) => s + r.cents, 0);
   if (sum !== totalAbs) { toast(`Splits (${fmt(sum)}) must add up to the amount (${fmt(totalAbs)})`); return; }
   const accountId = Number($("#tf-account").value);
