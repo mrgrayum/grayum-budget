@@ -346,7 +346,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-06 · income-item-label";
+const APP_VERSION = "2026-11-08 · review-pending-only";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -1036,11 +1036,16 @@ function reviewView() {
     // noise every upload. They stay stored (any status) purely as dedupe
     // memory: isDuplicateRow matches stored rows regardless of status, so a
     // re-upload collapses them instead of resurfacing them as new.
-    const shown = rows.filter(r => r.status === "pending" || r.status === "confirmed");
+    // Matt (2026-11-08): confirmed rows leave the list too — once a row is
+    // confirmed or skipped it drops out of Review, and the counts line
+    // below is its audit log. Confirmed purchases live in Activity; that
+    // list is his record of what was confirmed. ONLY pending rows render.
+    const shown = rows.filter(r => r.status === "pending");
     const imp = imps.find(i => i.id === UI.reviewImportId);
     const hiddenDup = imp ? (imp.duplicateRows || 0) : 0;
     const hiddenSkip = rows.filter(r => r.status === "skipped").length;
-    if (!shown.length) h += `<p class="small muted">Nothing to review in this import — every row in it is already tracked or skipped.</p>`;
+    const handledConf = rows.filter(r => r.status === "confirmed").length;
+    if (!shown.length) h += `<p class="small muted">Nothing to review in this import — every row in it has been handled. Confirmed purchases are in Activity.</p>`;
     h += shown.map(r => {
       const guess = r.guessedItemId ? itemById(r.guessedItemId) : guessItemFor(r.description);
       const selItem = guess ? guess.id : null;
@@ -1066,7 +1071,7 @@ function reviewView() {
         <div class="meta small muted">${r.date} · ${pill}${refundTag}${guess && r.status === "pending" ? ` · guessed: ${esc(guess.name)}` : ""}</div></div>
         <div class="amt ${r.amountCents < 0 ? "neg" : "pos"}">${fmt(r.amountCents)}</div></div>${controls}</div>`;
     }).join("");
-    if (hiddenDup || hiddenSkip) h += `<p class="small muted" style="margin-top:8px;">Not shown: ${hiddenDup} already-tracked and ${hiddenSkip} skipped row${hiddenSkip === 1 ? "" : "s"} from this file — they're remembered only so this statement never resurfaces them as new.</p>`;
+    if (handledConf || hiddenDup || hiddenSkip) h += `<p class="small muted" style="margin-top:8px;">Audit log for this file: ${handledConf} confirmed · ${hiddenSkip} skipped · ${hiddenDup} already-tracked — handled rows aren't listed; they stay on record only so this statement never resurfaces them as new.</p>`;
   }
   return h;
 }
