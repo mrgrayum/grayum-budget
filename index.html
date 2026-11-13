@@ -346,7 +346,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-08 · review-pending-only";
+const APP_VERSION = "2026-11-13 · dedupe-pending-fix";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -1002,14 +1002,26 @@ function guessItemFor(desc) {
   }
   return null;
 }
+// Dedupe fingerprint for STATEMENT ROWS: the full normalized description.
+// merchantKey() is for merchant MATCHING (guesses/mappings) — it drops pure-
+// digit tokens and keeps only 3 words, so as a fingerprint it collapses
+// genuinely distinct charges (five identical $2.70 Nayax vending charges on
+// 2026-11-11, each with its own POS reference, became one row). The full
+// description keeps the reference, so distinct charges stay distinct, while
+// a re-exported statement still matches because the bank's text is stable
+// and both sides are normalized the same way at parse time.
+function rowFingerprint(date, amountCents, desc) {
+  return date + "|" + amountCents + "|" +
+    String(desc || "").toLowerCase().replace(/\s+/g, " ").trim();
+}
 function isDuplicateRow(date, amountCents, desc) {
   const key = merchantKey(desc);
+  const fp = rowFingerprint(date, amountCents, desc);
   return S.transactions.some(t => {
     if (t.date !== date || t.amountCents !== amountCents) return false;
     const tk = merchantKey(t.merchant);
     return tk === key || (tk && key && (tk.includes(key) || key.includes(tk)));
-  }) || S.statementRows.some(r => r.date === date && r.amountCents === amountCents &&
-       merchantKey(r.description) === key);
+  }) || S.statementRows.some(r => rowFingerprint(r.date, r.amountCents, r.description) === fp);
 }
 function reviewView() {
   let h = `<div class="card"><h3>Import a bank statement (CSV)</h3>
@@ -1908,7 +1920,7 @@ async function handleStatementFile(file, accountId) {
   let dupCount = 0;
   const fresh = [];
   parsed.forEach(r => {
-    const key = r.date + "|" + r.amountCents + "|" + merchantKey(r.description);
+    const key = rowFingerprint(r.date, r.amountCents, r.description);
     if (seen.has(key) || isDuplicateRow(r.date, r.amountCents, r.description)) { dupCount++; return; }
     seen.add(key);
     fresh.push(r);
@@ -1951,10 +1963,18 @@ async function confirmStatementRow(row, itemId) {
   const accountId = (imp && imp.accountId) || (S.accounts.find(a => !a.archived) || {}).id;
   const txnId = await nextId("transactions");
   const splitId = await nextId("splits");
+  // Matt (2026-11-08): the bank writes "(PENDING)" into a charge's
+  // description while it is pending, and that text used to be stored as
+  // part of the transaction name forever. Strip it from the name — the
+  // app tracks pending properly via the Cleared flag, so a bank-pending
+  // row confirms as NOT cleared and flips to cleared when it posts.
+  const bankPending = /\(pending\)/i.test(row.description);
+  const cleanMerchant = row.description.replace(/\s*\(pending\)\s*/gi, " ")
+    .replace(/\s+/g, " ").trim();
   const ops = [
     { type: "set", coll: "transactions", id: txnId, data: {
-      id: txnId, date: row.date, merchant: row.description, note: "",
-      amountCents: row.amountCents, accountId, cleared: true,
+      id: txnId, date: row.date, merchant: cleanMerchant, note: "",
+      amountCents: row.amountCents, accountId, cleared: !bankPending,
       // A CREDIT row assigned to a non-income item is a refund: the
       // positive split restores that item's Available (Matt's rule).
       kind: row.amountCents > 0 && !isIncomeItem(itemId) ? "refund" : "standard",
