@@ -346,7 +346,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-16 · deeplink-figures-fix";
+const APP_VERSION = "2026-11-16 · ask-button";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -1031,7 +1031,7 @@ function reviewView() {
           <button class="btn small" data-act="confirmrow" data-row="${r.id}">Confirm</button>
           <button class="btn small secondary" data-act="splitrow" data-row="${r.id}">Split…</button>
           <button class="btn small secondary" data-act="skiprow" data-row="${r.id}">Skip</button>
-          <button class="btn small secondary" data-act="askwife" data-row="${r.id}">Ask Stephanie</button></div>`;
+          <button class="btn small secondary" data-act="ask" data-row="${r.id}">Ask</button></div>`;
       }
       // A credit row whose (pre)selected item is a spending item is a
       // refund — money back into the item the purchase came from.
@@ -1968,9 +1968,9 @@ async function confirmStatementRow(row, itemId) {
   return true;
 }
 
-/* ---------------- ask Stephanie (text a deep link) ----------------
-   Matt (2026-11-16): when he can't identify a statement charge, a
-   Review row's "Ask Stephanie" button drafts a text to his wife with
+/* ---------------- ask about a charge (text a deep link) ----------------
+   Matt (2026-11-16): when one spouse can't identify a statement
+   charge, a Review row's "Ask" button drafts a text to the other with
    the charge's description, amount and date, plus a deep link
    (?review=<rowId>). The link is stashed to localStorage at boot
    (before any sign-in flow can rewrite the URL) and consumed once
@@ -1978,17 +1978,43 @@ async function confirmStatementRow(row, itemId) {
    Note: iOS opens web links from Messages in Safari, not in a home-
    screen web app shortcut — same app and data either way, and her
    Safari sign-in persists. */
-const SPOUSE_PHONE = "+17746416483"; // Stephanie Grayum
+// Matt (2026-11-16): the Ask flow goes both ways — either spouse can
+// be texted a deep link to assign a charge the other can't identify.
+const ASK_PEOPLE = [
+  { key: "matt", name: "Matt", phone: "+15083657041",
+    greeting: "Hey Handsome husband, when you get a chance can you tap the following link to assign an expense I'm not sure about?" },
+  { key: "stephanie", name: "Stephanie", phone: "+17746416483",
+    greeting: "Hey Beautiful wife, when you get a chance can you tap the following link to assign an expense I'm not sure about?" },
+];
 function prettyDate(iso) {
   const MN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const p = String(iso).split("-").map(Number);
   return p.length === 3 && MN[p[1] - 1] ? `${MN[p[1] - 1]} ${p[2]}, ${p[0]}` : iso;
 }
-function askWifeMessage(row) {
+function askMessage(row, person) {
   const desc = row.description.replace(/\s*\(pending\)\s*/gi, " ").replace(/\s+/g, " ").trim();
   const link = "https://mrgrayum.github.io/grayum-budget/?review=" + row.id;
-  return "Hey Beautiful wife, when you get a chance can you tap the following link to assign an expense I'm not sure about?\n\n"
+  return person.greeting + "\n\n"
     + desc + " — " + fmt(row.amountCents) + " on " + prettyDate(row.date) + "\n\n" + link;
+}
+function openAskChooser(row) {
+  openModal(`<h2>Ask about this expense</h2>
+    <p class="small muted">${esc(row.description)} — ${fmt(row.amountCents)} on ${prettyDate(row.date)}</p>
+    <p class="small">Text a link to:</p>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+      ${ASK_PEOPLE.map(p => `<button class="btn" data-ask-person="${p.key}">Text ${esc(p.name)}</button>`).join("")}
+    </div>
+    <div class="actions"><button class="btn secondary" data-close>Cancel</button></div>`);
+  bindModalClose();
+  $$("#modal-root [data-ask-person]").forEach(b => b.addEventListener("click", () => {
+    const person = ASK_PEOPLE.find(p => p.key === b.dataset.askPerson);
+    if (!person) return;
+    const body = askMessage(row, person);
+    if (navigator.clipboard) navigator.clipboard.writeText(body).catch(() => {});
+    closeModal();
+    toast("Opening Messages with the text ready to send");
+    window.location.href = "sms:" + person.phone + "?&body=" + encodeURIComponent(body);
+  }));
 }
 function openAssignRowModal(row) {
   const guess = row.guessedItemId ? itemById(row.guessedItemId) : guessItemFor(row.description);
@@ -2293,13 +2319,9 @@ async function handleAct(el, e) {
       if (row) await setDoc("statementRows", row.id, { ...row, status: "skipped" });
       break;
     }
-    case "askwife": {
+    case "ask": {
       const row = S.statementRows.find(r => r.id === Number(el.dataset.row));
-      if (!row) break;
-      const body = askWifeMessage(row);
-      if (navigator.clipboard) navigator.clipboard.writeText(body).catch(() => {});
-      toast("Opening Messages with the text ready to send");
-      window.location.href = "sms:" + SPOUSE_PHONE + "?&body=" + encodeURIComponent(body);
+      if (row) openAskChooser(row);
       break;
     }
     case "confirmall": {
