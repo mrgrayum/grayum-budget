@@ -346,7 +346,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-16 · ask-stephanie";
+const APP_VERSION = "2026-11-16 · ask-stephanie-split";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -1995,12 +1995,23 @@ function openAssignRowModal(row) {
     <div class="meta small muted">${prettyDate(row.date)}</div>
     <div class="amt ${row.amountCents < 0 ? "neg" : "pos"}" style="font-size:20px; margin-top:2px;">${fmt(row.amountCents)}</div></div>
     ${fieldHtml("Budget item", `<select id="assign-item">${itemOptionsGrouped(pickMonth, selItem, row.amountCents < 0 ? "out" : null)}</select>`)}
-    ${modalActions("Assign it")}`);
+    ${modalActions("Assign it", `<button class="btn secondary" id="assign-split">Split across items…</button>`)}`);
   bindModalClose();
   $("[data-save]", $("#modal-root")).addEventListener("click", async () => {
     const itemId = Number($("#assign-item").value);
     if (!itemId) { toast("Pick a budget item first"); return; }
     if (await confirmStatementRow(row, itemId)) { closeModal(); toast("Assigned — thank you!"); }
+  });
+  // Split instead: hand off to the full transaction form (the same one
+  // Review's Split\u2026 opens), prefilled from this row and linked back
+  // to it, so saving there marks this row assigned. Matt (2026-11-16):
+  // Stephanie may need to split a charge across items, not just pick one.
+  $("#assign-split").addEventListener("click", () => {
+    const itemId = Number($("#assign-item").value) || null;
+    const imp = S.statementImports.find(i => i.id === row.importId);
+    closeModal();
+    openTxnForm({ date: row.date, description: row.description, amountCents: row.amountCents,
+      accountId: imp ? imp.accountId : null, itemId, statementRowId: row.id });
   });
 }
 let deepReviewConsumed = false;
