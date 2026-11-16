@@ -346,7 +346,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-16 · ask-stephanie-split";
+const APP_VERSION = "2026-11-16 · deeplink-figures-fix";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -516,10 +516,13 @@ let unsubscribers = [];
 function colRef(name) { return db.collection(name); }
 function startListeners() {
   stopListeners();
+  S.loadedCols = new Set();
+  S.monthsLoaded = false;
   COLLECTIONS.forEach(name => {
     unsubscribers.push(colRef(name).onSnapshot(snap => {
       S[name] = snap.docs.map(d => d.data());
       S.loaded = true;
+      S.loadedCols.add(name);
       if (name === "statementRows") { S.rowsLoaded = true; purgeDuplicateRows(); }
       render();
       maybeOpenDeepReview();
@@ -529,8 +532,10 @@ function startListeners() {
     S.months = {};
     snap.docs.forEach(d => { S.months[d.id] = d.data(); });
     S.loaded = true;
+    S.monthsLoaded = true;
     if (!S.months[UI.month]) UI.month = activeMonth();
     render();
+    maybeOpenDeepReview();
   }, err => console.error("listener months", err)));
 }
 function stopListeners() { unsubscribers.forEach(u => u()); unsubscribers = []; }
@@ -2016,7 +2021,15 @@ function openAssignRowModal(row) {
 }
 let deepReviewConsumed = false;
 function maybeOpenDeepReview() {
+  // Wait for EVERY collection (and months) to load at least once: the
+  // assign window's Available figures are computed the moment it
+  // opens, and statementRows tends to arrive before budgetMoves —
+  // opening early showed figures with the moves missing (caught in
+  // live testing 2026-11-16: mirror-image differences of exactly the
+  // moved amounts). Renders self-correct as data arrives; a modal's
+  // frozen figures don't.
   if (deepReviewConsumed || !S.user || !S.rowsLoaded) return;
+  if (!S.loadedCols || S.loadedCols.size < COLLECTIONS.length || !S.monthsLoaded) return;
   let id = null;
   try { id = window.localStorage.getItem("gbDeepReview"); } catch (e) {}
   deepReviewConsumed = true;
