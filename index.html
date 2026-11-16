@@ -346,7 +346,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-16 · debug-moves";
+const APP_VERSION = "2026-11-16 · deeplink-figures-fix";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -1995,7 +1995,7 @@ function openAssignRowModal(row) {
   const pickMonth = S.monthLines.some(l => l.month === monthOf(row.date)) ? monthOf(row.date) : activeMonth();
   const selItem = guess && (row.amountCents >= 0 || !isIncomeItem(guess.id)) ? guess.id : null;
   openModal(`<h2>Assign this expense</h2>
-    <p class="small muted">Matt wasn't sure what this one was for — pick the budget item it belongs to and tap Assign. [debug: moves=${S.budgetMoves.length} cols=${S.loadedCols ? S.loadedCols.size : "?"} rows=${S.statementRows.length} splits=${S.splits.length}]</p>
+    <p class="small muted">Matt wasn't sure what this one was for — pick the budget item it belongs to and tap Assign.</p>
     <div class="line-card" style="margin-bottom:10px;"><div style="font-weight:700;">${esc(row.description)}</div>
     <div class="meta small muted">${prettyDate(row.date)}</div>
     <div class="amt ${row.amountCents < 0 ? "neg" : "pos"}" style="font-size:20px; margin-top:2px;">${fmt(row.amountCents)}</div></div>
