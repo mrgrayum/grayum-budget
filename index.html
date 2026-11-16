@@ -346,7 +346,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-16 · typing-dropdowns";
+const APP_VERSION = "2026-11-16 · ask-stephanie";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -520,8 +520,9 @@ function startListeners() {
     unsubscribers.push(colRef(name).onSnapshot(snap => {
       S[name] = snap.docs.map(d => d.data());
       S.loaded = true;
-      if (name === "statementRows") purgeDuplicateRows();
+      if (name === "statementRows") { S.rowsLoaded = true; purgeDuplicateRows(); }
       render();
+      maybeOpenDeepReview();
     }, err => console.error("listener", name, err)));
   });
   unsubscribers.push(db.collection("months").onSnapshot(snap => {
@@ -1024,7 +1025,8 @@ function reviewView() {
           <select id="row-item-${r.id}" style="flex:1; min-width:170px; padding:8px; border:1.5px solid var(--line); border-radius:9px;">${itemOptionsGrouped(pickMonth, selItem, r.amountCents < 0 ? "out" : null)}</select>
           <button class="btn small" data-act="confirmrow" data-row="${r.id}">Confirm</button>
           <button class="btn small secondary" data-act="splitrow" data-row="${r.id}">Split…</button>
-          <button class="btn small secondary" data-act="skiprow" data-row="${r.id}">Skip</button></div>`;
+          <button class="btn small secondary" data-act="skiprow" data-row="${r.id}">Skip</button>
+          <button class="btn small secondary" data-act="askwife" data-row="${r.id}">Ask Stephanie</button></div>`;
       }
       // A credit row whose (pre)selected item is a spending item is a
       // refund — money back into the item the purchase came from.
@@ -1961,6 +1963,64 @@ async function confirmStatementRow(row, itemId) {
   return true;
 }
 
+/* ---------------- ask Stephanie (text a deep link) ----------------
+   Matt (2026-11-16): when he can't identify a statement charge, a
+   Review row's "Ask Stephanie" button drafts a text to his wife with
+   the charge's description, amount and date, plus a deep link
+   (?review=<rowId>). The link is stashed to localStorage at boot
+   (before any sign-in flow can rewrite the URL) and consumed once
+   data loads: it opens a focused assign window for exactly that row.
+   Note: iOS opens web links from Messages in Safari, not in a home-
+   screen web app shortcut — same app and data either way, and her
+   Safari sign-in persists. */
+const SPOUSE_PHONE = "+17746416483"; // Stephanie Grayum
+function prettyDate(iso) {
+  const MN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const p = String(iso).split("-").map(Number);
+  return p.length === 3 && MN[p[1] - 1] ? `${MN[p[1] - 1]} ${p[2]}, ${p[0]}` : iso;
+}
+function askWifeMessage(row) {
+  const desc = row.description.replace(/\s*\(pending\)\s*/gi, " ").replace(/\s+/g, " ").trim();
+  const link = "https://mrgrayum.github.io/grayum-budget/?review=" + row.id;
+  return "Hey Beautiful wife, when you get a chance can you tap the following link to assign an expense I'm not sure about?\n\n"
+    + desc + " — " + fmt(row.amountCents) + " on " + prettyDate(row.date) + "\n\n" + link;
+}
+function openAssignRowModal(row) {
+  const guess = row.guessedItemId ? itemById(row.guessedItemId) : guessItemFor(row.description);
+  const pickMonth = S.monthLines.some(l => l.month === monthOf(row.date)) ? monthOf(row.date) : activeMonth();
+  const selItem = guess && (row.amountCents >= 0 || !isIncomeItem(guess.id)) ? guess.id : null;
+  openModal(`<h2>Assign this expense</h2>
+    <p class="small muted">Matt wasn't sure what this one was for — pick the budget item it belongs to and tap Assign.</p>
+    <div class="line-card" style="margin-bottom:10px;"><div style="font-weight:700;">${esc(row.description)}</div>
+    <div class="meta small muted">${prettyDate(row.date)}</div>
+    <div class="amt ${row.amountCents < 0 ? "neg" : "pos"}" style="font-size:20px; margin-top:2px;">${fmt(row.amountCents)}</div></div>
+    ${fieldHtml("Budget item", `<select id="assign-item">${itemOptionsGrouped(pickMonth, selItem, row.amountCents < 0 ? "out" : null)}</select>`)}
+    ${modalActions("Assign it")}`);
+  bindModalClose();
+  $("[data-save]", $("#modal-root")).addEventListener("click", async () => {
+    const itemId = Number($("#assign-item").value);
+    if (!itemId) { toast("Pick a budget item first"); return; }
+    if (await confirmStatementRow(row, itemId)) { closeModal(); toast("Assigned — thank you!"); }
+  });
+}
+let deepReviewConsumed = false;
+function maybeOpenDeepReview() {
+  if (deepReviewConsumed || !S.user || !S.rowsLoaded) return;
+  let id = null;
+  try { id = window.localStorage.getItem("gbDeepReview"); } catch (e) {}
+  deepReviewConsumed = true;
+  if (!id) return;
+  try { window.localStorage.removeItem("gbDeepReview"); } catch (e) {}
+  if (window.location.search.includes("review=")) window.history.replaceState(null, "", window.location.pathname);
+  const row = S.statementRows.find(r => r.id === Number(id));
+  UI.tab = "review";
+  if (!row) { toast("Couldn't find that transaction — it may have been removed."); render(); return; }
+  UI.reviewImportId = row.importId;
+  render();
+  if (row.status === "pending") openAssignRowModal(row);
+  else toast("That expense was already assigned — nothing to do. Thanks!");
+}
+
 /* ---------------- income planned: destination prompt ----------------
    savePlannedAmount is the ONE shared path for saving a line's Planned
    amount (the card's inline edit is the only Planned editor — the item
@@ -2207,6 +2267,15 @@ async function handleAct(el, e) {
     case "skiprow": {
       const row = S.statementRows.find(r => r.id === Number(el.dataset.row));
       if (row) await setDoc("statementRows", row.id, { ...row, status: "skipped" });
+      break;
+    }
+    case "askwife": {
+      const row = S.statementRows.find(r => r.id === Number(el.dataset.row));
+      if (!row) break;
+      const body = askWifeMessage(row);
+      if (navigator.clipboard) navigator.clipboard.writeText(body).catch(() => {});
+      toast("Opening Messages with the text ready to send");
+      window.location.href = "sms:" + SPOUSE_PHONE + "?&body=" + encodeURIComponent(body);
       break;
     }
     case "confirmall": {
@@ -2637,6 +2706,12 @@ function showView(name) {
   $("#view-app").classList.toggle("hidden", name !== "app");
 }
 function initAuth() {
+  // Deep link from an "Ask Stephanie" text (?review=<rowId>): stash
+  // the row id before any sign-in flow can rewrite the URL.
+  try {
+    const deep = new URLSearchParams(window.location.search).get("review");
+    if (deep) window.localStorage.setItem("gbDeepReview", deep);
+  } catch (e) {}
   if (CONFIG_PLACEHOLDER || !auth) {
     showView("auth");
     const n = $("#auth-notice");
@@ -2665,6 +2740,7 @@ function initAuth() {
       showView("app");
       startListeners();
       render();
+      maybeOpenDeepReview();
     } else if (user) {
       S.user = null;
       stopListeners();
