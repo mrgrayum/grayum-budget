@@ -346,7 +346,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-13 · dedupe-pending-fix";
+const APP_VERSION = "2026-11-16 · typing-dropdowns";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -448,85 +448,38 @@ function download(filename, text, type) {
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 
-/* ---------------- money input (cents-first) ----------------
-   Typing digits builds the amount in cents: 1 2 3 4 -> $12.34.
-   Typing "." switches to explicit-dollar entry: the digits typed so
-   far become whole dollars and following digits are decimal cents.
+/* ---------------- money input (plain typing) ----------------
+   Matt (2026-11-16): no more cents-first ATM entry. The field is a
+   plain text box: focusing selects everything, so typing writes OVER
+   the old value. What he types is what it means — "23" is $23.00,
+   "23.40" is $23.40, "1,000.23" / "1000" / "1023.25" all parse as
+   expected (commas optional). The value reformats (commas, 2
+   decimals) on blur. getCents()/setCents() API unchanged.
 ----------------------------------------------------------- */
 function attachMoneyInput(input, initialCents, opts) {
-  // opts.dollar: include the "$" in the rendered value (used by the Planned
-  // cell so it matches the $ shown on the other cells). Display-only — the
-  // buffers, key handling, and cents-first entry are identical either way.
+  // opts.dollar: include the "$" in the rendered value (used by the
+  // Planned cell so it matches the $ shown on the other cells).
   const showDollar = !!(opts && opts.dollar);
-  let mode = "cents";                 // 'cents' | 'dollars'
-  let digits = String(Math.abs(initialCents || 0)); // cents-mode buffer
-  let dollarText = "";                // dollars-mode buffer (e.g. "1234.5")
-  function render() {
-    if (mode === "cents") {
-      input.value = digits === "" ? "" : (showDollar ? fmt(parseInt(digits, 10) || 0) : fmtPlain(parseInt(digits, 10) || 0));
-    } else {
-      const parts = dollarText.split(".");
-      const intPart = parts[0] === "" ? "" : Number(parts[0]).toLocaleString("en-US");
-      input.value = (showDollar ? "$" : "") + (parts.length > 1 ? intPart + "." + parts[1] : intPart + ".");
-    }
-    input.setSelectionRange(input.value.length, input.value.length);
+  function formatCents(c) {
+    const a = Math.abs(c || 0);
+    return showDollar ? fmt(a) : fmtPlain(a);
   }
-  input.addEventListener("focus", () => { render(); });
-  input.addEventListener("keydown", e => {
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-    const k = e.key;
-    if (/^[0-9]$/.test(k)) {
-      e.preventDefault();
-      if (mode === "cents") {
-        digits = (digits + k).replace(/^0+(?=\d)/, "");
-        if (digits.length > 11) digits = digits.slice(0, 11);
-      } else {
-        const dec = dollarText.split(".")[1] || "";
-        if (dec.length >= 2) return;
-        dollarText += k;
-      }
-      render();
-    } else if (k === ".") {
-      e.preventDefault();
-      if (mode === "cents") {
-        mode = "dollars";
-        dollarText = String(Math.floor((parseInt(digits, 10) || 0) / 100)) + ".";
-        render();
-      }
-    } else if (k === "Backspace" || k === "Delete") {
-      e.preventDefault();
-      if (mode === "cents") {
-        digits = digits.slice(0, -1);
-      } else {
-        dollarText = dollarText.slice(0, -1);
-        if (!dollarText.includes(".")) { // fell back through the dot: return to cents mode
-          mode = "cents";
-          digits = String(Math.round(parseFloat(dollarText || "0") * 100));
-          dollarText = "";
-        }
-      }
-      render();
-    } else if (["Tab", "Enter", "ArrowLeft", "ArrowRight", "Home", "End", "Escape"].includes(k)) {
-      return;
-    } else if (k.length === 1) {
-      e.preventDefault();
-    }
+  function parseText(t) {
+    const clean = String(t == null ? "" : t).replace(/[^0-9.]/g, "");
+    if (!clean || clean === ".") return 0;
+    const num = parseFloat(clean);
+    return isNaN(num) ? 0 : Math.round(Math.abs(num) * 100);
+  }
+  input.inputMode = "decimal";
+  input.value = formatCents(initialCents || 0);
+  input.addEventListener("focus", () => {
+    // Select all so the next keystroke replaces the value outright.
+    try { input.select(); } catch (e) {}
+    setTimeout(() => { try { input.select(); } catch (e) {} }, 0);
   });
-  input.addEventListener("paste", e => {
-    e.preventDefault();
-    const text = (e.clipboardData || window.clipboardData).getData("text") || "";
-    const num = parseFloat(text.replace(/[^0-9.\-]/g, ""));
-    if (isNaN(num)) return;
-    mode = "cents";
-    digits = String(Math.round(Math.abs(num) * 100));
-    render();
-  });
-  input.getCents = () => {
-    if (mode === "cents") return parseInt(digits, 10) || 0;
-    return Math.round((parseFloat(dollarText) || 0) * 100);
-  };
-  input.setCents = c => { mode = "cents"; digits = String(Math.abs(c || 0)); dollarText = ""; render(); };
-  render();
+  input.addEventListener("blur", () => { input.value = formatCents(parseText(input.value)); });
+  input.getCents = () => parseText(input.value);
+  input.setCents = c => { input.value = formatCents(c || 0); };
   return input;
 }
 
@@ -1068,7 +1021,7 @@ function reviewView() {
       if (r.status === "pending") {
         const pickMonth = S.monthLines.some(l => l.month === monthOf(r.date)) ? monthOf(r.date) : activeMonth();
         controls = `<div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
-          <select id="row-item-${r.id}" style="flex:1; min-width:170px; padding:8px; border:1.5px solid var(--line); border-radius:9px;">${itemOptionsGrouped(pickMonth, selItem)}</select>
+          <select id="row-item-${r.id}" style="flex:1; min-width:170px; padding:8px; border:1.5px solid var(--line); border-radius:9px;">${itemOptionsGrouped(pickMonth, selItem, r.amountCents < 0 ? "out" : null)}</select>
           <button class="btn small" data-act="confirmrow" data-row="${r.id}">Confirm</button>
           <button class="btn small secondary" data-act="splitrow" data-row="${r.id}">Split…</button>
           <button class="btn small secondary" data-act="skiprow" data-row="${r.id}">Skip</button></div>`;
@@ -1087,14 +1040,29 @@ function reviewView() {
   }
   return h;
 }
-function itemOptionsGrouped(month, selectedItemId) {
+function lineFigureSuffix(line, flows) {
+  // Matt (2026-11-16): every budget-item dropdown shows the money
+  // figure next to the item name — Available for spending/savings
+  // lines, Outstanding for income lines (lineAvailable returns
+  // Planned - Received for income, which IS the outstanding figure).
+  const v = lineAvailable(line, flows);
+  return isIncomeItem(line.itemId) ? ` · ${fmt(v)} outstanding` : ` · ${fmt(v)} available`;
+}
+function itemOptionsGrouped(month, selectedItemId, mode) {
+  // mode "in" lists income items only, "out" non-income only; no mode
+  // lists everything. Review passes "out" for a negative (expense) row
+  // so an expense can never be offered an income line (Matt,
+  // 2026-11-16); a positive row keeps everything — an income item
+  // (income) or a spending item (a refund back into it).
+  const flows = flowByLine();
   const groups = S.groups.slice().sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
   return groups.map(g => {
-    const lines = S.monthLines.filter(l => l.month === month && l.groupId === g.id)
+    const lines = S.monthLines.filter(l => l.month === month && l.groupId === g.id
+      && (mode == null || isIncomeItem(l.itemId) === (mode === "in")))
       .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
     if (!lines.length) return "";
     return `<optgroup label="${esc(g.name)}">` + lines.map(l =>
-      `<option value="${l.itemId}" ${l.itemId === selectedItemId ? "selected" : ""}>${esc(l.itemName)}</option>`).join("") + `</optgroup>`;
+      `<option value="${l.itemId}" ${l.itemId === selectedItemId ? "selected" : ""}>${esc(l.itemName)}${lineFigureSuffix(l, flows)}</option>`).join("") + `</optgroup>`;
   }).join("");
 }
 
@@ -1605,6 +1573,7 @@ function openTxnForm(opts) {
 function lineOptionsGrouped(month, selectedLineId, mode) {
   // mode "in" lists income items only, "out" non-income only; no mode
   // (other callers) lists everything, as before.
+  const flows = flowByLine();
   const groups = S.groups.slice().sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
   return groups.map(g => {
     const lines = S.monthLines.filter(l => l.month === month && l.groupId === g.id
@@ -1612,7 +1581,7 @@ function lineOptionsGrouped(month, selectedLineId, mode) {
       .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
     if (!lines.length) return "";
     return `<optgroup label="${esc(g.name)}">` + lines.map(l =>
-      `<option value="${l.id}" ${l.id === selectedLineId ? "selected" : ""}>${esc(l.itemName)}</option>`).join("") + `</optgroup>`;
+      `<option value="${l.id}" ${l.id === selectedLineId ? "selected" : ""}>${esc(l.itemName)}${lineFigureSuffix(l, flows)}</option>`).join("") + `</optgroup>`;
   }).join("");
 }
 async function saveTxnForm() {
@@ -1689,16 +1658,19 @@ async function saveTxnForm() {
 /* ---------------- move money ---------------- */
 function openMoveForm(fromLineId) {
   const month = UI.month;
+  const mvFlows = flowByLine();
   const fromLine = fromLineId ? lineById(fromLineId) : null;
   const nonIncomeItems = S.items.filter(i => !i.archived && !isIncomeItem(i.id))
     .sort((a, b) => a.name.localeCompare(b.name));
   openModal(`<h2>Move money between items</h2>
     <p class="small muted">Moves adjust each item's Available in ${monthLabel(month)} and roll forward.
     Planned amounts don't change. The move is kept as a permanent dated record.</p>
-    ${fieldHtml("From item", `<select id="mv-from">${nonIncomeItems.map(i =>
-      `<option value="${i.id}" ${fromLine && fromLine.itemId === i.id ? "selected" : ""}>${esc(i.name)}</option>`).join("")}</select>`)}
-    ${fieldHtml("To item", `<select id="mv-to">${nonIncomeItems.map(i =>
-      `<option value="${i.id}">${esc(i.name)}</option>`).join("")}</select>`)}
+    ${fieldHtml("From item", `<select id="mv-from">${nonIncomeItems.map(i => {
+      const l = lineOf(month, i.id);
+      return `<option value="${i.id}" ${fromLine && fromLine.itemId === i.id ? "selected" : ""}>${esc(i.name)}${l ? lineFigureSuffix(l, mvFlows) : ""}</option>`; }).join("")}</select>`)}
+    ${fieldHtml("To item", `<select id="mv-to">${nonIncomeItems.map(i => {
+      const l = lineOf(month, i.id);
+      return `<option value="${i.id}">${esc(i.name)}${l ? lineFigureSuffix(l, mvFlows) : ""}</option>`; }).join("")}</select>`)}
     ${fieldHtml("Amount", `<input type="text" id="mv-amount" inputmode="numeric">`)}
     ${fieldHtml("Date", `<input type="date" id="mv-date" value="${todayStr()}">`)}
     ${fieldHtml("Note (optional)", `<input type="text" id="mv-note">`)}
@@ -2518,7 +2490,7 @@ function openAddRecurring() {
     <div class="seg" id="ar-dir"><button data-dir="out" class="on">Money out</button><button data-dir="in">Money in</button></div>
     ${fieldHtml("Amount", `<input type="text" id="ar-amount" inputmode="numeric">`)}
     ${fieldHtml("Account", `<select id="ar-account">${S.accounts.filter(a => !a.archived).map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join("")}</select>`)}
-    ${fieldHtml("Budget item", `<select id="ar-item">${itemOptionsGrouped(activeMonth(), null)}</select>`)}
+    ${fieldHtml("Budget item", `<select id="ar-item">${itemOptionsGrouped(activeMonth(), null, "out")}</select>`)}
     ${fieldHtml("Frequency", `<select id="ar-freq"><option value="monthly">Monthly</option><option value="weekly">Weekly</option></select>`)}
     ${fieldHtml("Next date", `<input type="date" id="ar-next" value="${todayStr()}">`)}
     ${modalActions("Add recurring")}`);
@@ -2528,6 +2500,12 @@ function openAddRecurring() {
   $$("#ar-dir button").forEach(b => b.addEventListener("click", () => {
     dir = b.dataset.dir;
     $$("#ar-dir button").forEach(x => x.classList.toggle("on", x === b));
+    // The item list follows the direction: Money out never offers
+    // income lines, Money in offers income lines only.
+    const sel = $("#ar-item");
+    const prev = sel.value ? Number(sel.value) : null;
+    sel.innerHTML = itemOptionsGrouped(activeMonth(), prev, dir);
+    if (prev && !Array.from(sel.options).some(o => Number(o.value) === prev)) sel.selectedIndex = 0;
   }));
   $("[data-save]", $("#modal-root")).addEventListener("click", async () => {
     const merchant = $("#ar-merch").value.trim();
