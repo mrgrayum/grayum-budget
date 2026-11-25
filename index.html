@@ -346,7 +346,7 @@
    cents. Formulas mirror check_seed.py exactly (baseline-verified).
    ===================================================================== */
 
-const APP_VERSION = "2026-11-16 · ask-button";
+const APP_VERSION = "2026-11-25 · month-scoped";
 
 /* ---------------- helpers ---------------- */
 const $ = (sel, el) => (el || document).querySelector(sel);
@@ -587,6 +587,14 @@ async function batchWrite(ops) { // ops: [{type:'set'|'delete', coll, id, data}]
 function groupById(id) { return S.groups.find(g => g.id === id); }
 function itemById(id) { return S.items.find(i => i.id === id); }
 function lineById(id) { return S.monthLines.find(l => l.id === id); }
+/* Month-scoped archive (Matt, 2026-11-25): archiving a card now applies to
+   ONE month — the month whose card was opened — never to earlier months.
+   A line counts as archived when its own archived flag is set; the older
+   item-level flag still counts too, so items archived before this change
+   (e.g. EveryDollar App) stay hidden in every month exactly as before. */
+function lineArchived(l) {
+  return !!l.archived || !!((itemById(l.itemId) || {}).archived);
+}
 function accountById(id) { return S.accounts.find(a => a.id === id); }
 function isIncomeItem(itemId) {
   const it = itemById(itemId);
@@ -636,9 +644,9 @@ function lineAvailable(line, flows) {
 }
 function monthTotals(month, flows, includeArchivedPlan) {
   // Two populations, kept separate on purpose:
-  // - PLAN figures (incPlanned / outPlanned / ltb) count only items still in
-  //   the plan. An ARCHIVED item is out of the plan while archived, so its
-  //   lines' Planned is excluded — an archived income line must not count
+  // - PLAN figures (incPlanned / outPlanned / ltb) count only lines still in
+  //   the plan. A line ARCHIVED in that month is out of that month's plan,
+  //   so its Planned is excluded — an archived income line must not count
   //   as expected income while its card is invisible. (Pass
   //   includeArchivedPlan=true only for the actuals-side coverage math in
   //   balancer(), which must not move when an item is archived.)
@@ -649,7 +657,7 @@ function monthTotals(month, flows, includeArchivedPlan) {
   let incPlanned = 0, outPlanned = 0, received = 0, spent = 0;
   S.monthLines.filter(l => l.month === month).forEach(l => {
     const f = flows.get(l.id) || 0;
-    const inPlan = includeArchivedPlan || !(itemById(l.itemId) || {}).archived;
+    const inPlan = includeArchivedPlan || !lineArchived(l);
     if (isIncomeItem(l.itemId)) { received += f; if (inPlan) incPlanned += l.plannedCents; }
     else { spent += -f; if (inPlan) outPlanned += l.plannedCents; }
   });
@@ -677,13 +685,13 @@ function balanceCheck(month, flows) {
   const budgetLayer = carried + t.received - t.spent;
   const acctTotal = accountsTotal();
   // Expected-not-yet-received is a PLAN figure, so it is computed over the
-  // income items still in the plan (not archived) on BOTH sides of the
+  // income lines still in the plan (not archived that month) on BOTH sides of the
   // subtraction: archiving an income item removes its expectation and its
   // receipts from this figure together, while the actuals above (carried,
   // received, spent, difference) always count every real flow.
   let expPlanned = 0, expReceived = 0;
   S.monthLines.filter(l => l.month === month).forEach(l => {
-    if (!isIncomeItem(l.itemId) || (itemById(l.itemId) || {}).archived) return;
+    if (!isIncomeItem(l.itemId) || lineArchived(l)) return;
     expPlanned += l.plannedCents; expReceived += flows.get(l.id) || 0;
   });
   return {
@@ -858,11 +866,11 @@ function lineCard(line, flows) {
 
 function budgetView(flows) {
   const month = UI.month;
-  // Archived items are out of the plan: their cards (and their group
-  // subtotals and Favorites entries, which derive from this list) are not
-  // rendered. Their lines and transactions still exist and still count in
-  // every actuals figure — see monthTotals/balanceCheck.
-  const lines = S.monthLines.filter(l => l.month === month && !(itemById(l.itemId) || {}).archived);
+  // Lines archived in this month are out of this month's plan: their cards
+  // (and their group subtotals and Favorites entries, which derive from
+  // this list) are not rendered. Their transactions still exist and still
+  // count in every actuals figure — see monthTotals/balanceCheck.
+  const lines = S.monthLines.filter(l => l.month === month && !lineArchived(l));
   const byGroup = new Map();
   lines.forEach(l => { if (!byGroup.has(l.groupId)) byGroup.set(l.groupId, []); byGroup.get(l.groupId).push(l); });
   const groups = S.groups.slice().sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
@@ -1064,7 +1072,7 @@ function itemOptionsGrouped(month, selectedItemId, mode) {
   const flows = flowByLine();
   const groups = S.groups.slice().sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
   return groups.map(g => {
-    const lines = S.monthLines.filter(l => l.month === month && l.groupId === g.id
+    const lines = S.monthLines.filter(l => l.month === month && l.groupId === g.id && !lineArchived(l)
       && (mode == null || isIncomeItem(l.itemId) === (mode === "in")))
       .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
     if (!lines.length) return "";
@@ -1147,13 +1155,25 @@ function monthsListHtml() {
 function archivedListHtml() {
   const arch = S.items.filter(i => i.archived)
     .slice().sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
-  if (!arch.length) return `<p class="small muted">No archived items.</p>`;
+  // Lines archived in the browsed month only (the item itself is not
+  // archived) — unarchiving restores the card in that month alone.
+  const month = UI.month;
+  const lineArch = S.monthLines.filter(l => l.month === month && l.archived
+    && !(itemById(l.itemId) || {}).archived)
+    .slice().sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  if (!arch.length && !lineArch.length) return `<p class="small muted">No archived items.</p>`;
   return arch.map(i => {
     const g = groupById(i.groupId);
     return `<div class="txnrow"><div class="main">
       <div class="merch">${esc(i.name)}</div>
-      <div class="meta">${esc(g ? g.name : "?")}</div></div>
+      <div class="meta">${esc(g ? g.name : "?")} · archived in all months</div></div>
       <button class="btn small secondary" data-act="unarchive" data-item="${i.id}">Unarchive</button></div>`;
+  }).join("") + lineArch.map(l => {
+    const g = groupById(l.groupId);
+    return `<div class="txnrow"><div class="main">
+      <div class="merch">${esc(l.itemName)}</div>
+      <div class="meta">${esc(g ? g.name : "?")} · archived in ${monthLabel(month)} only</div></div>
+      <button class="btn small secondary" data-act="unarchline" data-line="${l.id}">Unarchive</button></div>`;
   }).join("");
 }
 function moreView() {
@@ -1166,8 +1186,8 @@ function moreView() {
   </div>
   <div class="card"><h3>Archived items</h3>
     <div id="archived-list">${archivedListHtml()}</div>
-    <p class="small muted">Archived items are hidden from the budget and don't count in the month's plan totals.
-    Unarchive brings an item's card back.</p>
+    <p class="small muted">Archiving a card now applies to one month at a time — the month whose card you
+    opened — and that month's plan totals. Other months keep their card. Unarchive brings the card back.</p>
   </div>
   <div class="card"><h3>Recurring transactions</h3>
     <div id="recurring-list">${recurringListHtml()}</div>
@@ -1262,8 +1282,9 @@ async function ensureMonth(month, silent) {
   const source = earlier.length ? earlier[earlier.length - 1] : (ms.find(m => m > month) || null);
   if (!source) { if (!silent) toast("No month to copy from yet."); return false; }
   if (!silent && !confirm(`Create ${monthLabel(month)} by copying ${monthLabel(source)}?`)) return false;
-  // Archived items get no line in the new month.
-  const srcLines = S.monthLines.filter(l => l.month === source && !(itemById(l.itemId) || {}).archived)
+  // Lines archived in the source month get no line in the new month — an
+  // archive carries forward, never backward.
+  const srcLines = S.monthLines.filter(l => l.month === source && !lineArchived(l))
     .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
   const ids = await nextIds("monthLines", srcLines.length);
   const ops = [{ type: "set", coll: "months", id: month, data: { month, closed: false, memo: "" } }];
@@ -1321,8 +1342,8 @@ async function restartMonth(month) {
     "? Its current lines will be replaced with a fresh copy of " + monthLabel(source) + "'s.",
     "Restart month");
   if (!ok) return;
-  // Archived items get no line in the restarted month either.
-  const srcLines = S.monthLines.filter(l => l.month === source && !(itemById(l.itemId) || {}).archived)
+  // Lines archived in the source month get no line in the restarted month either.
+  const srcLines = S.monthLines.filter(l => l.month === source && !lineArchived(l))
     .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
   const ids = await nextIds("monthLines", srcLines.length);
   const ops = S.monthLines.filter(l => l.month === month)
@@ -1583,7 +1604,7 @@ function lineOptionsGrouped(month, selectedLineId, mode) {
   const flows = flowByLine();
   const groups = S.groups.slice().sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
   return groups.map(g => {
-    const lines = S.monthLines.filter(l => l.month === month && l.groupId === g.id
+    const lines = S.monthLines.filter(l => l.month === month && l.groupId === g.id && !lineArchived(l)
       && (mode == null || isIncomeItem(l.itemId) === (mode === "in")))
       .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
     if (!lines.length) return "";
@@ -1745,7 +1766,7 @@ function openItemDetail(lineId) {
       ${income ? "" : `<button class="btn secondary" id="it-move">⇄ Move</button>`}
     </div>
     <div class="actions">
-      <button class="btn secondary" id="it-archive">${item.archived ? "Unarchive item" : "Archive item"}</button>
+      <button class="btn secondary" id="it-archive">${item.archived ? "Unarchive item" : (line.archived ? `Unarchive in ${monthLabel(line.month)}` : `Archive in ${monthLabel(line.month)}`)}</button>
       <button class="btn secondary" data-close>Close</button>
       <button class="btn" data-save>Save</button>
     </div>`);
@@ -1760,26 +1781,38 @@ function openItemDetail(lineId) {
     : { itemId: line.itemId, date: todayStr() }); });
   if (!income) $("#it-move").addEventListener("click", () => { closeModal(); openMoveForm(lineId); });
   $("#it-archive").addEventListener("click", async () => {
-    // Matt's rule (2026-11-06): an item can only be archived EMPTY. A
+    // Month-scoped archive (Matt, 2026-11-25): this button acts on the
+    // line whose card was opened — archiving hides the card in that month
+    // only and leaves every other month untouched. Items archived under
+    // the old global rule (item.archived) still unarchive globally here.
+    if (item.archived) {
+      await setDoc("items", item.id, { ...item, archived: false });
+      closeModal(); toast("Item unarchived");
+      return;
+    }
+    if (line.archived) {
+      await setDoc("monthLines", line.id, { ...line, archived: false });
+      closeModal(); toast("Card restored in " + monthLabel(line.month));
+      return;
+    }
+    // Matt's rule (2026-11-06): a line can only be archived EMPTY. A
     // nonzero Available — saved money or an overspend hole — must be moved
     // or covered first (he moves it himself; ⇄ Move is right here in this
-    // dialog). Gate on the ACTIVE month's line for the item when one
-    // exists: that's the live pot, whichever month's card was opened.
+    // dialog). The gate reads THIS month's line — the one being archived.
     // Income items hold no pot, so they're never blocked.
-    if (!item.archived && !income) {
-      const gateLine = S.monthLines.find(l => l.itemId === item.id && l.month === activeMonth()) || line;
-      const gateAvail = lineAvailable(gateLine, flows);
+    if (!income) {
+      const gateAvail = lineAvailable(line, flows);
       if (gateAvail > 0) {
-        toast(`Can't archive — ${line.itemName} still has ${fmt(gateAvail)} available. Move it to another item first (⇄ Move), then archive.`);
+        toast(`Can't archive — ${line.itemName} still has ${fmt(gateAvail)} available in ${monthLabel(line.month)}. Move it to another item first (⇄ Move), then archive.`);
         return;
       }
       if (gateAvail < 0) {
-        toast(`Can't archive — ${line.itemName} is ${fmt(-gateAvail)} overspent. Cover it with a move from another item first, then archive.`);
+        toast(`Can't archive — ${line.itemName} is ${fmt(-gateAvail)} overspent in ${monthLabel(line.month)}. Cover it with a move from another item first, then archive.`);
         return;
       }
     }
-    await setDoc("items", item.id, { ...item, archived: !item.archived });
-    closeModal(); toast(item.archived ? "Item unarchived" : "Item archived");
+    await setDoc("monthLines", line.id, { ...line, archived: true });
+    closeModal(); toast("Archived in " + monthLabel(line.month) + " only — other months unchanged");
   });
   $("[data-save]", $("#modal-root")).addEventListener("click", async () => {
     const newName = $("#it-name").value.trim() || item.name;
@@ -2259,6 +2292,11 @@ async function handleAct(el, e) {
       if (item) { await setDoc("items", item.id, { ...item, archived: false }); toast("Item unarchived"); }
       break;
     }
+    case "unarchline": {
+      const line = lineById(Number(el.dataset.line));
+      if (line) { await setDoc("monthLines", line.id, { ...line, archived: false }); toast("Card restored in " + monthLabel(line.month)); }
+      break;
+    }
     case "item": openItemDetail(Number(el.dataset.line)); break;
     case "move": openMoveForm(Number(el.dataset.line)); break;
     case "gotoaccounts": UI.tab = "accounts"; render(); break;
@@ -2474,11 +2512,15 @@ function openTransfer() {
 /* ---------------- add item / group ---------------- */
 function openAddItem(groupId) {
   const g = groupById(groupId);
-  const act = activeMonth();
+  // Month-scoped add (Matt, 2026-11-25): the item is added to the month
+  // being viewed — where he tapped Add — and to any later months that
+  // already exist. Earlier months are never touched: adding a fifth
+  // paycheck while planning December must not change November's plan.
+  const act = UI.month;
   openModal(`<h2>Add item to ${esc(g ? g.name : "")}</h2>
     ${fieldHtml("Item name", `<input type="text" id="ai-name" placeholder="e.g. Electric bill">`)}
     ${fieldHtml(`Planned amount for ${monthLabel(act)} (optional)`, `<input type="text" id="ai-planned" inputmode="numeric">`,
-      "The item is added to every month; the planned amount applies to this month only — other months start at $0.")}
+      "The item is added to this month and later months — earlier months are not changed. The planned amount applies to this month only — later months start at $0.")}
     ${modalActions("Add item")}`);
   bindModalClose();
   const plannedIn = attachMoneyInput($("#ai-planned"), 0);
@@ -2488,7 +2530,7 @@ function openAddItem(groupId) {
     const planned = plannedIn.getCents();
     const itemId = await nextId("items");
     const sortOrder = S.items.filter(i => i.groupId === groupId).reduce((m, i) => Math.max(m, i.sortOrder), -1) + 1;
-    const ms = monthsSorted();
+    const ms = monthsSorted().filter(m => m >= act);
     const lineIds = await nextIds("monthLines", ms.length);
     const itemData = {
       id: itemId, groupId, name, sortOrder, favorite: false, openingBalanceCents: 0,
